@@ -141,16 +141,19 @@ function isStaffRole(role) {
 /* Field positions used for the defensive lineup diagram (excludes
    Utility / Manager, which aren't a spot on the field). Coordinates are
    in a 0-100 viewBox shared with the SVG diamond drawing. */
+/* Rows are spaced generously apart (each row's circle + name tag needs
+   roughly 20 vertical units of clearance) so that no two labels can ever
+   touch, even with the longest names the truncation allows. */
 const FIELD_POSITIONS = [
-  { key: "Lanceur", short: "P", x: 50, y: 66 },
-  { key: "Catcher", short: "C", x: 50, y: 88 },
-  { key: "Première base", short: "1B", x: 72, y: 62 },
-  { key: "Deuxième base", short: "2B", x: 65, y: 41 },
-  { key: "Troisième base", short: "3B", x: 28, y: 62 },
-  { key: "Arrêt-court", short: "SS", x: 35, y: 41 },
-  { key: "Champ gauche", short: "LF", x: 20, y: 26 },
-  { key: "Champ centre", short: "CC", x: 50, y: 12 },
-  { key: "Champ droit", short: "RF", x: 80, y: 26 },
+  { key: "Champ centre", short: "CC", x: 50, y: 14 },
+  { key: "Champ gauche", short: "LF", x: 20, y: 38 },
+  { key: "Champ droit", short: "RF", x: 80, y: 38 },
+  { key: "Arrêt-court", short: "SS", x: 27, y: 62 },
+  { key: "Deuxième base", short: "2B", x: 73, y: 62 },
+  { key: "Troisième base", short: "3B", x: 20, y: 86 },
+  { key: "Première base", short: "1B", x: 80, y: 86 },
+  { key: "Lanceur", short: "P", x: 50, y: 110 },
+  { key: "Catcher", short: "C", x: 50, y: 134 },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -1506,17 +1509,17 @@ function FieldDiagram({ defense, roster }) {
   }
 
   return (
-    <svg viewBox="0 0 100 106" className="field-svg">
-      <rect x="0" y="0" width="100" height="106" rx="4" className="field-grass" />
-      <path d="M 50 4 A 60 60 0 0 1 96 66 L 50 66 Z" className="field-outfield" />
-      <path d="M 50 4 A 60 60 0 0 0 4 66 L 50 66 Z" className="field-outfield" />
-      <polygon points="50,92 74,66 50,40 26,66" className="field-infield" />
-      <line x1="50" y1="92" x2="4" y2="66" className="field-line" />
-      <line x1="50" y1="92" x2="96" y2="66" className="field-line" />
-      <circle cx="50" cy="92" r="1.6" className="field-base" />
-      <circle cx="74" cy="66" r="1.6" className="field-base" />
-      <circle cx="50" cy="40" r="1.6" className="field-base" />
-      <circle cx="26" cy="66" r="1.6" className="field-base" />
+    <svg viewBox="0 0 100 150" className="field-svg">
+      <rect x="0" y="0" width="100" height="150" rx="4" className="field-grass" />
+      <path d="M 50 6 A 78 78 0 0 1 98 92 L 50 92 Z" className="field-outfield" />
+      <path d="M 50 6 A 78 78 0 0 0 2 92 L 50 92 Z" className="field-outfield" />
+      <polygon points="50,136 76,108 50,80 24,108" className="field-infield" />
+      <line x1="50" y1="136" x2="2" y2="92" className="field-line" />
+      <line x1="50" y1="136" x2="98" y2="92" className="field-line" />
+      <circle cx="50" cy="136" r="1.8" className="field-base" />
+      <circle cx="76" cy="108" r="1.8" className="field-base" />
+      <circle cx="50" cy="80" r="1.8" className="field-base" />
+      <circle cx="24" cy="108" r="1.8" className="field-base" />
 
       {FIELD_POSITIONS.map((fp) => {
         const playerId = defense[fp.key];
@@ -1621,7 +1624,8 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
         </div>
         <div className="hint" style={{ marginBottom: 10 }}>
           Les joueurs déjà placés à un autre poste apparaissent en <span style={{ color: "var(--bad)" }}>rouge</span> dans
-          les listes ci-dessous. Les choisir ailleurs les y déplace — jamais de doublon.
+          les listes ci-dessous (les choisir ailleurs les y déplace — jamais de doublon). Une
+          étoile ★ signale un poste souhaité par le joueur.
         </div>
         <div className="defense-list">
           {FIELD_POSITIONS.map((fp) => (
@@ -1637,7 +1641,7 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
                   const alreadyPlaced = usedInDefense.has(p.id) && lineup.defense[fp.key] !== p.id;
                   return (
                     <option key={p.id} value={p.id} style={alreadyPlaced ? { color: "#e05a4e" } : undefined}>
-                      {alreadyPlaced ? "🔴 " : ""}{playerLabel(p)}{p.prefs.includes(fp.key) ? " ★ poste souhaité" : ""}{alreadyPlaced ? " — déjà placé" : ""}
+                      {alreadyPlaced ? "🔴 " : ""}{playerLabel(p)}{p.prefs.includes(fp.key) ? " ★" : ""}{alreadyPlaced ? " (déjà placé)" : ""}
                     </option>
                   );
                 })}
@@ -2425,22 +2429,19 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 
 .tab-switch {
   display: flex;
+  flex-wrap: wrap;
   border: 1px solid var(--line);
   border-radius: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   max-width: 100%;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
 }
-.tab-switch::-webkit-scrollbar { display: none; }
 .tsw {
   background: transparent;
   border: none;
   flex: 0 0 auto;
   white-space: nowrap;
   color: var(--cream);
-  padding: 6px 12px;
+  padding: 6px 10px;
   cursor: pointer;
   font-size: 13px;
   font-family: 'Inter', sans-serif;
@@ -2683,7 +2684,17 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .defense-list { display: flex; flex-direction: column; gap: 8px; }
 .defense-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 0; }
 .defense-row span { flex: 0 0 130px; color: var(--cream); font-size: 13px; }
-.defense-row select { flex: 1; }
+.defense-row select { flex: 1; min-width: 0; }
+
+@media (max-width: 520px) {
+  .defense-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .defense-row span { flex: none; }
+  .defense-row select { width: 100%; }
+}
 
 .batting-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .batting-row { display: flex; align-items: center; gap: 8px; }
