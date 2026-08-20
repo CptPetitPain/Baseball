@@ -144,10 +144,10 @@ function isStaffRole(role) {
 const FIELD_POSITIONS = [
   { key: "Lanceur", short: "P", x: 50, y: 66 },
   { key: "Catcher", short: "C", x: 50, y: 88 },
-  { key: "Première base", short: "1B", x: 70, y: 60 },
-  { key: "Deuxième base", short: "2B", x: 63, y: 43 },
-  { key: "Troisième base", short: "3B", x: 30, y: 60 },
-  { key: "Arrêt-court", short: "SS", x: 37, y: 43 },
+  { key: "Première base", short: "1B", x: 72, y: 62, stagger: true },
+  { key: "Deuxième base", short: "2B", x: 65, y: 41, stagger: true },
+  { key: "Troisième base", short: "3B", x: 28, y: 62 },
+  { key: "Arrêt-court", short: "SS", x: 35, y: 41 },
   { key: "Champ gauche", short: "LF", x: 20, y: 26 },
   { key: "Champ centre", short: "CC", x: 50, y: 12 },
   { key: "Champ droit", short: "RF", x: 80, y: 26 },
@@ -177,13 +177,22 @@ function DebouncedInput({ value, onCommit, ...props }) {
   useEffect(() => {
     setLocal(value ?? "");
   }, [value]);
+  // Number inputs are usually adjusted with the little spinner arrows,
+  // which don't reliably trigger a blur event. Committing immediately for
+  // numbers avoids other parts of the UI (like PCT/GB) computing off a
+  // stale, not-yet-saved value. Text inputs still commit on blur/Enter to
+  // avoid a network call per keystroke.
+  const isNumber = props.type === "number";
   return (
     <input
       {...props}
       value={local}
-      onChange={(e) => setLocal(e.target.value)}
+      onChange={(e) => {
+        setLocal(e.target.value);
+        if (isNumber) onCommit(e.target.value);
+      }}
       onBlur={() => {
-        if (local !== (value ?? "")) onCommit(local);
+        if (!isNumber && local !== (value ?? "")) onCommit(local);
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.target.blur();
@@ -1466,7 +1475,8 @@ function FieldDiagram({ defense, roster }) {
   function nameFor(playerId) {
     const p = roster.find((r) => r.id === playerId);
     if (!p) return "";
-    return p.nom + (p.prenom ? " " + p.prenom[0] + "." : "");
+    const nom = p.nom || "";
+    return nom.length > 9 ? nom.slice(0, 8) + "…" : nom;
   }
 
   return (
@@ -1490,7 +1500,7 @@ function FieldDiagram({ defense, roster }) {
             <text x={fp.x} y={fp.y + 1.4} textAnchor="middle" className="field-marker-label">
               {fp.short}
             </text>
-            <text x={fp.x} y={fp.y + 9} textAnchor="middle" className="field-marker-name">
+            <text x={fp.x} y={fp.y + (fp.stagger ? 13 : 9)} textAnchor="middle" className="field-marker-name">
               {playerId ? nameFor(playerId) : "—"}
             </text>
           </g>
@@ -1958,7 +1968,9 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
       {canEdit && (
         <div className="hint" style={{ marginBottom: 14 }}>
           Recopie les chiffres depuis la page de classement officielle de la ligue. Le PCT et
-          le nombre de matchs d'écart (GB) se calculent automatiquement.
+          le nombre de matchs d'écart (GB) se calculent automatiquement. Pour créer une nouvelle
+          saison : ajoute une équipe, puis change le petit champ "Saison" sous son nom (ex:
+          2027) — elle apparaîtra alors dans le sélecteur ci-dessous.
         </div>
       )}
 
@@ -1989,12 +2001,21 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
             <div className="standings-rank">{idx + 1}</div>
             <div>
               {canEdit ? (
-                <DebouncedInput
-                  className="standings-team-input"
-                  value={team.team}
-                  onCommit={(v) => onUpdateField(team.id, "team", v)}
-                  disabled={busy}
-                />
+                <>
+                  <DebouncedInput
+                    className="standings-team-input"
+                    value={team.team}
+                    onCommit={(v) => onUpdateField(team.id, "team", v)}
+                    disabled={busy}
+                  />
+                  <DebouncedInput
+                    className="standings-season-input"
+                    value={team.season || ""}
+                    onCommit={(v) => { onUpdateField(team.id, "season", v); setSeasonFilter(v); }}
+                    disabled={busy}
+                    placeholder="Saison ex: 2027"
+                  />
+                </>
               ) : (
                 <span className="standings-team-name">{team.team}</span>
               )}
@@ -2582,7 +2603,7 @@ const CSS = `
 .field-marker.filled { fill: var(--gold); stroke: var(--cream); }
 .field-marker-label { font-family: 'Oswald', sans-serif; font-size: 5.4px; fill: var(--cream); font-weight: 700; }
 .field-marker.filled + .field-marker-label { fill: #12280f; }
-.field-marker-name { font-family: 'Inter', sans-serif; font-size: 4.6px; font-weight: 700; fill: var(--cream); }
+.field-marker-name { font-family: 'Inter', sans-serif; font-size: 3.9px; font-weight: 700; fill: var(--cream); }
 
 .defense-list { display: flex; flex-direction: column; gap: 8px; }
 .defense-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 0; }
@@ -2851,6 +2872,21 @@ const CSS = `
   padding: 6px 8px;
   border-radius: 6px;
   font-size: 13px;
+}
+.standings-season-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 3px 8px 0;
+  font-size: 11px;
+}
+.standings-season-input:focus {
+  background: #0c2015;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--cream);
 }
 
 .hist-summary {
