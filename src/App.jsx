@@ -144,8 +144,8 @@ function isStaffRole(role) {
 const FIELD_POSITIONS = [
   { key: "Lanceur", short: "P", x: 50, y: 66 },
   { key: "Catcher", short: "C", x: 50, y: 88 },
-  { key: "Première base", short: "1B", x: 72, y: 62, stagger: true },
-  { key: "Deuxième base", short: "2B", x: 65, y: 41, stagger: true },
+  { key: "Première base", short: "1B", x: 72, y: 62 },
+  { key: "Deuxième base", short: "2B", x: 65, y: 41 },
   { key: "Troisième base", short: "3B", x: 28, y: 62 },
   { key: "Arrêt-court", short: "SS", x: 35, y: 41 },
   { key: "Champ gauche", short: "LF", x: 20, y: 26 },
@@ -1500,7 +1500,7 @@ function FieldDiagram({ defense, roster }) {
             <text x={fp.x} y={fp.y + 1.4} textAnchor="middle" className="field-marker-label">
               {fp.short}
             </text>
-            <text x={fp.x} y={fp.y + (fp.stagger ? 13 : 9)} textAnchor="middle" className="field-marker-name">
+            <text x={fp.x} y={fp.y + 11.5} textAnchor="middle" className="field-marker-name">
               {playerId ? nameFor(playerId) : "—"}
             </text>
           </g>
