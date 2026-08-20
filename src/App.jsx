@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { getItem, setItem } from "./storage.js";
+import { callApi } from "./api.js";
 
 const LOGO_DATA_URI = "data:image/jpeg;base64,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";
 
@@ -97,8 +97,10 @@ const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
   pos3: p3,
 }));
 
-const STAFF_CODE = "DRAGONS2026";
-const STORAGE_KEY = "dragons-presence-app-v1";
+const STAFF_ROLES = ["coach", "owner"];
+function isStaffRole(role) {
+  return STAFF_ROLES.includes(role);
+}
 
 /* Field positions used for the defensive lineup diagram (excludes
    Utility / Manager, which aren't a spot on the field). Coordinates are
@@ -118,76 +120,16 @@ const FIELD_POSITIONS = [
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
+/* All password hashing, secret codes, and state persistence now live
+   exclusively server-side in netlify/functions/api.js. This file only
+   talks to that API — it never touches raw storage or secrets. */
 
-async function sha256(text) {
-  const enc = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function nowLabel() {
-  const d = new Date();
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) +
-    " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function defaultState() {
-  const presence = {};
-  const positions = {};
-  INITIAL_ROSTER.forEach((p) => {
-    presence[p.id] = {};
-    positions[p.id] = { pos1: p.pos1, pos2: p.pos2, pos3: p.pos3 };
-  });
-  return {
-    roster: INITIAL_ROSTER,
-    accounts: {},
-    presence,
-    positions,
-    lineups: {},
-    matches: MATCHES_SEED,
-    auditLog: [],
-  };
-}
-
-function normalizeState(s) {
-  const base = defaultState();
-  const matches = (s.matches && s.matches.length ? s.matches : base.matches).map((m) => ({
-    ...m,
-    innings: m.innings || emptyInnings(),
-  }));
-  return {
-    roster: s.roster || base.roster,
-    accounts: s.accounts || {},
-    presence: s.presence || {},
-    positions: s.positions || {},
-    lineups: s.lineups || {},
-    matches,
-    auditLog: s.auditLog || [],
-  };
-}
+const TOKEN_STORAGE_KEY = "dragons-session-token";
 
 function getLineup(state, matchId) {
   const l = state.lineups[matchId] || { defense: {}, batting: [] };
   const batting = Array.from({ length: 9 }, (_, i) => l.batting[i] || "");
   return { defense: l.defense || {}, batting };
-}
-
-async function loadState() {
-  try {
-    const res = await getItem(STORAGE_KEY);
-    if (res && res.value) return normalizeState(JSON.parse(res.value));
-  } catch (e) {
-    /* key doesn't exist yet */
-  }
-  const initial = defaultState();
-  await setItem(STORAGE_KEY, JSON.stringify(initial));
-  return initial;
-}
-
-async function saveState(state) {
-  await setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 /* ------------------------------------------------------------------ */
@@ -218,13 +160,29 @@ export default function DragonsApp() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [session, setSession] = useState(null); // { username, playerId, role }
+  const [authToken, setAuthToken] = useState(null);
   const [screen, setScreen] = useState("login"); // login | signup | player | coach
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    loadState()
-      .then((s) => {
-        setState(s);
+    let storedToken = null;
+    try {
+      storedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    } catch (e) {
+      /* localStorage unavailable (private browsing, etc.) — proceed logged out */
+    }
+    callApi({ action: "getState", token: storedToken || undefined })
+      .then((res) => {
+        setState(res.state);
+        if (res.session && storedToken) {
+          setAuthToken(storedToken);
+          setSession({
+            username: res.session.username,
+            role: res.session.role,
+            playerId: res.session.playerId,
+          });
+          setScreen(isStaffRole(res.session.role) ? "composition" : "player");
+        }
         setLoading(false);
       })
       .catch((e) => {
@@ -233,164 +191,57 @@ export default function DragonsApp() {
       });
   }, []);
 
-  const refresh = useCallback(async () => {
-    const s = await loadState();
-    setState(s);
-    return s;
-  }, []);
-
-  async function withMutation(fn) {
+  /* Every data-changing action goes through the server API. The server
+     verifies the session token and the caller's role before doing
+     anything — the client never computes permissions or touches raw
+     storage itself. */
+  async function callMutation(action, payload) {
     setBusy(true);
     setError("");
     try {
-      const fresh = await loadState();
-      const next = fn(fresh);
-      if (next) {
-        await saveState(next);
-        setState(next);
-      }
+      const res = await callApi({ action, token: authToken, ...payload });
+      setState(res.state);
+      return true;
     } catch (e) {
-      setError("Une erreur est survenue pendant la sauvegarde. Réessaie.");
+      setError(e.message || "Une erreur est survenue. Réessaie.");
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  function logAction(s, username, action) {
-    const entry = { ts: Date.now(), tsLabel: nowLabel(), user: username, action };
-    const log = [entry, ...(s.auditLog || [])].slice(0, 300);
-    return { ...s, auditLog: log };
-  }
-
   /* ---------------- Auth actions ---------------- */
-
-  async function handleSignup({ playerId, newNom, newPrenom, username, password, isStaff, staffCode }) {
-    await withMutation((s) => {
-      const uname = username.trim().toLowerCase();
-      if (!uname || !password) {
-        setError("Identifiant et mot de passe sont obligatoires.");
-        return null;
-      }
-      if (s.accounts[uname]) {
-        setError("Cet identifiant est déjà pris.");
-        return null;
-      }
-      if (isStaff && staffCode.trim() !== STAFF_CODE) {
-        setError("Code staff incorrect.");
-        return null;
-      }
-      let finalPlayerId = playerId;
-      let roster = s.roster;
-      let presence = s.presence;
-      let positions = s.positions;
-
-      if (playerId === "__new__") {
-        if (!newNom.trim() && !newPrenom.trim()) {
-          setError("Indique ton nom et ton prénom.");
-          return null;
-        }
-        finalPlayerId = slugify(newNom || "joueur", newPrenom) + "-" + Math.random().toString(36).slice(2, 6);
-        roster = [...roster, { id: finalPlayerId, nom: newNom.toUpperCase(), prenom: newPrenom, numero: "", pos1: "", pos2: "", pos3: "" }];
-        presence = { ...presence, [finalPlayerId]: {} };
-        positions = { ...positions, [finalPlayerId]: { pos1: "", pos2: "", pos3: "" } };
-      }
-
-      return {
-        ...s,
-        roster,
-        presence,
-        positions,
-        accounts: {
-          ...s.accounts,
-          [uname]: {
-            passwordHash: null, // set below after hashing (async)
-            playerId: finalPlayerId,
-            role: isStaff ? "coach" : "player",
-          },
-        },
-      };
-    });
-  }
-
-  /* Because password hashing is async and withMutation is sync-friendly,
-     we do signup in two explicit steps below via a dedicated function. */
 
   async function doSignup(form) {
     setBusy(true);
     setError("");
     try {
-      const uname = form.username.trim().toLowerCase();
-      if (!uname || !form.password) {
-        setError("Identifiant et mot de passe sont obligatoires.");
-        setBusy(false);
-        return;
+      if (form.password !== form.password2 && form.password2 !== undefined) {
+        // handled by the form itself, but double-check defensively
       }
-      if (form.password.length < 4) {
-        setError("Le mot de passe doit faire au moins 4 caractères.");
-        setBusy(false);
-        return;
+      const res = await callApi({
+        action: "signup",
+        username: form.username,
+        password: form.password,
+        playerId: form.playerId,
+        newNom: form.newNom,
+        newPrenom: form.newPrenom,
+        isStaff: form.isStaff,
+        staffCode: form.staffCode,
+        isOwner: form.isOwner,
+        ownerCode: form.ownerCode,
+      });
+      setState(res.state);
+      setAuthToken(res.token);
+      try {
+        window.localStorage.setItem(TOKEN_STORAGE_KEY, res.token);
+      } catch (e) {
+        /* ignore storage errors */
       }
-      if (form.isStaff && form.staffCode.trim() !== STAFF_CODE) {
-        setError("Code staff incorrect.");
-        setBusy(false);
-        return;
-      }
-      const hash = await sha256(form.password);
-      const fresh = await loadState();
-
-      if (fresh.accounts[uname]) {
-        setError("Cet identifiant est déjà pris.");
-        setBusy(false);
-        return;
-      }
-
-      let finalPlayerId = form.playerId;
-      let roster = fresh.roster;
-      let presence = fresh.presence;
-      let positions = fresh.positions;
-
-      if (form.playerId === "__new__") {
-        if (!form.newNom.trim() && !form.newPrenom.trim()) {
-          setError("Indique ton nom et ton prénom.");
-          setBusy(false);
-          return;
-        }
-        finalPlayerId = slugify(form.newNom || "joueur", form.newPrenom) + "-" + Math.random().toString(36).slice(2, 6);
-        roster = [...roster, { id: finalPlayerId, nom: form.newNom.toUpperCase(), prenom: form.newPrenom, numero: "", pos1: "", pos2: "", pos3: "" }];
-        presence = { ...presence, [finalPlayerId]: {} };
-        positions = { ...positions, [finalPlayerId]: { pos1: "", pos2: "", pos3: "" } };
-      } else {
-        // check playerId not already claimed by another account
-        const alreadyClaimed = Object.values(fresh.accounts).some((a) => a.playerId === finalPlayerId);
-        if (alreadyClaimed) {
-          setError("Ce joueur a déjà un compte. Connecte-toi ou choisis \"Nouveau joueur\".");
-          setBusy(false);
-          return;
-        }
-      }
-
-      let next = {
-        ...fresh,
-        roster,
-        presence,
-        positions,
-        accounts: {
-          ...fresh.accounts,
-          [uname]: {
-            passwordHash: hash,
-            playerId: finalPlayerId,
-            role: form.isStaff ? "coach" : "player",
-          },
-        },
-      };
-      next = logAction(next, uname, "a créé son compte" + (form.isStaff ? " (staff)" : ""));
-
-      await saveState(next);
-      setState(next);
-      setSession({ username: uname, playerId: finalPlayerId, role: form.isStaff ? "coach" : "player" });
-      setScreen(form.isStaff ? "composition" : "player");
+      setSession({ username: res.username, playerId: res.playerId, role: res.role });
+      setScreen(isStaffRole(res.role) ? "composition" : "player");
     } catch (e) {
-      setError("Une erreur est survenue. Réessaie.");
+      setError(e.message || "Une erreur est survenue. Réessaie.");
     } finally {
       setBusy(false);
     }
@@ -400,31 +251,35 @@ export default function DragonsApp() {
     setBusy(true);
     setError("");
     try {
-      const uname = username.trim().toLowerCase();
-      const fresh = await loadState();
-      const acc = fresh.accounts[uname];
-      if (!acc) {
-        setError("Identifiant inconnu.");
-        setBusy(false);
-        return;
+      const res = await callApi({ action: "login", username, password });
+      setState(res.state);
+      setAuthToken(res.token);
+      try {
+        window.localStorage.setItem(TOKEN_STORAGE_KEY, res.token);
+      } catch (e) {
+        /* ignore storage errors */
       }
-      const hash = await sha256(password);
-      if (hash !== acc.passwordHash) {
-        setError("Mot de passe incorrect.");
-        setBusy(false);
-        return;
-      }
-      setState(fresh);
-      setSession({ username: uname, playerId: acc.playerId, role: acc.role });
-      setScreen(acc.role === "coach" ? "composition" : "player");
+      setSession({ username: res.username, playerId: res.playerId, role: res.role });
+      setScreen(isStaffRole(res.role) ? "composition" : "player");
     } catch (e) {
-      setError("Une erreur est survenue. Réessaie.");
+      setError(e.message || "Une erreur est survenue. Réessaie.");
     } finally {
       setBusy(false);
     }
   }
 
-  function doLogout() {
+  async function doLogout() {
+    try {
+      await callApi({ action: "logout", token: authToken });
+    } catch (e) {
+      /* ignore — we're logging out client-side regardless */
+    }
+    try {
+      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+    setAuthToken(null);
     setSession(null);
     setScreen("login");
     setError("");
@@ -432,348 +287,102 @@ export default function DragonsApp() {
 
   /* ---------------- Player actions ---------------- */
 
-  async function setPresence(playerId, matchId, statusValue, actingUser) {
-    await withMutation((s) => {
-      const player = s.roster.find((p) => p.id === playerId);
-      const prevPresence = s.presence[playerId] || {};
-      const next = {
-        ...s,
-        presence: {
-          ...s.presence,
-          [playerId]: { ...prevPresence, [matchId]: statusValue },
-        },
-      };
-      const matchLabel = s.matches.find((m) => m.id === matchId)?.label || matchId;
-      const statusLabel = STATUTS.find((st) => st.value === statusValue)?.label || "Non renseigné";
-      const targetLabel = player ? `${player.prenom} ${player.nom}` : playerId;
-      return logAction(
-        next,
-        actingUser,
-        `a mis à jour "${matchLabel}" → ${statusLabel} pour ${targetLabel}`
-      );
-    });
+  async function setPresence(playerId, matchId, statusValue) {
+    await callMutation("setPresence", { playerId, matchId, statusValue });
   }
 
-  async function setVehicule(playerId, matchId, value, actingUser) {
-    await withMutation((s) => {
-      const key = matchId + "-vehicule";
-      const prevPresence = s.presence[playerId] || {};
-      const next = {
-        ...s,
-        presence: {
-          ...s.presence,
-          [playerId]: { ...prevPresence, [key]: value },
-        },
-      };
-      const player = s.roster.find((p) => p.id === playerId);
-      const matchLabel = s.matches.find((m) => m.id === matchId)?.label || matchId;
-      const targetLabel = player ? `${player.prenom} ${player.nom}` : playerId;
-      return logAction(next, actingUser, `a mis à jour véhicule "${matchLabel}" → ${value} pour ${targetLabel}`);
-    });
+  async function setVehicule(playerId, matchId, value) {
+    await callMutation("setVehicule", { playerId, matchId, value });
   }
 
-  async function setNumero(playerId, value, actingUser) {
-    await withMutation((s) => {
-      const roster = s.roster.map((p) => (p.id === playerId ? { ...p, numero: value } : p));
-      const next = { ...s, roster };
-      const player = roster.find((p) => p.id === playerId);
-      const targetLabel = player ? `${player.prenom} ${player.nom}` : playerId;
-      return logAction(next, actingUser, `a changé son numéro de maillot → ${value || "—"} (${targetLabel})`);
-    });
+  async function setPosition(playerId, slot, value) {
+    await callMutation("setPosition", { playerId, slot, value });
   }
 
-  async function setPosition(playerId, slot, value, actingUser) {
-    await withMutation((s) => {
-      const prevPos = s.positions[playerId] || {};
-      const next = {
-        ...s,
-        positions: { ...s.positions, [playerId]: { ...prevPos, [slot]: value } },
-      };
-      const player = s.roster.find((p) => p.id === playerId);
-      const targetLabel = player ? `${player.prenom} ${player.nom}` : playerId;
-      return logAction(next, actingUser, `a changé sa position ${slot} → ${value || "—"} (${targetLabel})`);
-    });
+  async function setNumero(playerId, value) {
+    await callMutation("setNumero", { playerId, value });
   }
 
   /* ---------------- Coach lineup actions ---------------- */
 
-  async function setDefenseSlot(matchId, posteKey, playerId, actingUser) {
-    await withMutation((s) => {
-      const lineup = getLineup(s, matchId);
-      const defense = { ...lineup.defense };
-      if (playerId) defense[posteKey] = playerId;
-      else delete defense[posteKey];
-      const next = {
-        ...s,
-        lineups: { ...s.lineups, [matchId]: { ...lineup, defense } },
-      };
-      const player = s.roster.find((p) => p.id === playerId);
-      const matchLabel = s.matches.find((m) => m.id === matchId)?.label || matchId;
-      const action = playerId
-        ? `a placé ${player ? player.prenom + " " + player.nom : playerId} à ${posteKey} (${matchLabel})`
-        : `a vidé le poste ${posteKey} (${matchLabel})`;
-      return logAction(next, actingUser, action);
-    });
+  async function setDefenseSlot(matchId, posteKey, playerId) {
+    await callMutation("setDefenseSlot", { matchId, posteKey, playerId });
   }
 
-  async function setBattingSlot(matchId, index, playerId, actingUser) {
-    await withMutation((s) => {
-      const lineup = getLineup(s, matchId);
-      const batting = [...lineup.batting];
-      batting[index] = playerId || "";
-      const next = {
-        ...s,
-        lineups: { ...s.lineups, [matchId]: { ...lineup, batting } },
-      };
-      const matchLabel = s.matches.find((m) => m.id === matchId)?.label || matchId;
-      return logAction(next, actingUser, `a mis à jour l'ordre au bâton (position ${index + 1}) pour ${matchLabel}`);
-    });
+  async function setBattingSlot(matchId, index, playerId) {
+    await callMutation("setBattingSlot", { matchId, index, playerId });
   }
 
-  async function updateMatchField(matchId, field, value, actingUser) {
-    await withMutation((s) => {
-      const matches = s.matches.map((m) => (m.id === matchId ? { ...m, [field]: value } : m));
-      const next = { ...s, matches };
-      const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
-      const fieldLabels = {
-        label: "le nom",
-        date: "la date",
-        opponent: "l'équipe adverse",
-      };
-      return logAction(next, actingUser, `a modifié ${fieldLabels[field] || field} de ${matchLabel}`);
-    });
+  /* ---------------- Match / results / standings actions ---------------- */
+
+  async function updateMatchField(matchId, field, value) {
+    await callMutation("updateMatchField", { matchId, field, value });
   }
 
-  async function setInning(matchId, team, inningIndex, value, actingUser) {
-    await withMutation((s) => {
-      const matches = s.matches.map((m) => {
-        if (m.id !== matchId) return m;
-        const innings = getInnings(m);
-        const teamArr = [...innings[team]];
-        teamArr[inningIndex] = value;
-        return { ...m, innings: { ...innings, [team]: teamArr } };
-      });
-      const next = { ...s, matches };
-      const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
-      const teamLabel = team === "dragons" ? "Dragons" : "adverse";
-      return logAction(next, actingUser, `a modifié la manche ${inningIndex + 1} (${teamLabel}) de ${matchLabel}`);
-    });
+  async function addMatch() {
+    await callMutation("addMatch", {});
   }
 
-  async function addMatch(actingUser) {
-    await withMutation((s) => {
-      const id = "m-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-      const newMatch = {
-        id,
-        label: `Match ${s.matches.length + 1}`,
-        date: "",
-        opponent: "",
-        innings: emptyInnings(),
-      };
-      const next = { ...s, matches: [...s.matches, newMatch] };
-      return logAction(next, actingUser, `a ajouté "${newMatch.label}"`);
-    });
+  async function deleteMatch(matchId) {
+    await callMutation("deleteMatch", { matchId });
   }
 
-  async function deletePlayer(playerId, actingUser) {
-    setBusy(true);
-    setError("");
-    try {
-      const fresh = await loadState();
-      const removed = fresh.roster.find((p) => p.id === playerId);
-      const linkedUsername = Object.entries(fresh.accounts).find(([, acc]) => acc.playerId === playerId)?.[0];
+  async function setInning(matchId, team, inningIndex, value) {
+    await callMutation("setInning", { matchId, team, inningIndex, value });
+  }
 
-      const roster = fresh.roster.filter((p) => p.id !== playerId);
+  async function addTeam() {
+    await callMutation("addTeam", {});
+  }
 
-      const presence = { ...fresh.presence };
-      delete presence[playerId];
+  async function updateTeamField(teamId, field, value) {
+    await callMutation("updateTeamField", { teamId, field, value });
+  }
 
-      const positions = { ...fresh.positions };
-      delete positions[playerId];
+  async function deleteTeam(teamId) {
+    await callMutation("deleteTeam", { teamId });
+  }
 
-      const lineups = {};
-      Object.entries(fresh.lineups).forEach(([matchId, lineup]) => {
-        const defense = { ...lineup.defense };
-        Object.keys(defense).forEach((poste) => {
-          if (defense[poste] === playerId) delete defense[poste];
-        });
-        const batting = (lineup.batting || []).map((pid) => (pid === playerId ? "" : pid));
-        lineups[matchId] = { ...lineup, defense, batting };
-      });
+  /* ---------------- Account management actions ---------------- */
 
-      const accounts = { ...fresh.accounts };
-      if (linkedUsername) delete accounts[linkedUsername];
+  async function doResetPassword(username, newPassword) {
+    return callMutation("resetPassword", { username, newPassword });
+  }
 
-      let next = { ...fresh, roster, presence, positions, lineups, accounts };
-      const targetLabel = removed ? `${removed.prenom} ${removed.nom}` : playerId;
-      next = logAction(
-        next,
-        actingUser,
-        `a supprimé le joueur "${targetLabel}"${linkedUsername ? ` (et son compte "${linkedUsername}")` : ""}`
-      );
-
-      await saveState(next);
-      setState(next);
-
-      if (session && session.playerId === playerId) {
-        setSession(null);
-        setScreen("login");
-      }
-      return true;
-    } catch (e) {
-      setError("Une erreur est survenue. Réessaie.");
-      return false;
-    } finally {
-      setBusy(false);
+  async function doDeleteAccount(username) {
+    const ok = await callMutation("deleteAccount", { username });
+    if (ok && session && session.username === username) {
+      doLogout();
     }
+    return ok;
   }
 
-  async function deleteMatch(matchId, actingUser) {
-    await withMutation((s) => {
-      const removed = s.matches.find((m) => m.id === matchId);
-      const matches = s.matches.filter((m) => m.id !== matchId);
-      const lineups = { ...s.lineups };
-      delete lineups[matchId];
-      const presence = {};
-      Object.entries(s.presence).forEach(([playerId, rec]) => {
-        const { [matchId]: _a, [matchId + "-vehicule"]: _b, ...rest } = rec;
-        presence[playerId] = rest;
-      });
-      const next = { ...s, matches, lineups, presence };
-      return logAction(next, actingUser, `a supprimé "${removed ? removed.label : matchId}"`);
-    });
+  async function doSetAccountRole(username, newRole) {
+    const ok = await callMutation("setAccountRole", { username, newRole });
+    if (ok && session && session.username === username) {
+      setSession({ ...session, role: newRole });
+    }
+    return ok;
   }
 
-  async function doResetPassword(username, newPassword, actingUser) {
-    if (!newPassword || newPassword.length < 4) {
-      setError("Le nouveau mot de passe doit faire au moins 4 caractères.");
-      return false;
+  async function doRenameAccount(oldUsername, newUsername) {
+    const ok = await callMutation("renameAccount", { oldUsername, newUsername });
+    if (ok && session && session.username === oldUsername) {
+      setSession({ ...session, username: newUsername.trim().toLowerCase() });
     }
-    setBusy(true);
-    setError("");
-    try {
-      const hash = await sha256(newPassword);
-      const fresh = await loadState();
-      if (!fresh.accounts[username]) {
-        setError("Compte introuvable.");
-        setBusy(false);
-        return false;
-      }
-      let next = {
-        ...fresh,
-        accounts: {
-          ...fresh.accounts,
-          [username]: { ...fresh.accounts[username], passwordHash: hash },
-        },
-      };
-      next = logAction(next, actingUser, `a réinitialisé le mot de passe de "${username}"`);
-      await saveState(next);
-      setState(next);
-      return true;
-    } catch (e) {
-      setError("Une erreur est survenue. Réessaie.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
+    return ok;
   }
 
-  async function doDeleteAccount(username, actingUser) {
-    setBusy(true);
-    setError("");
-    try {
-      const fresh = await loadState();
-      if (!fresh.accounts[username]) {
-        setBusy(false);
-        return false;
-      }
-      const { [username]: removed, ...rest } = fresh.accounts;
-      let next = { ...fresh, accounts: rest };
-      next = logAction(next, actingUser, `a supprimé le compte "${username}"`);
-      await saveState(next);
-      setState(next);
-      if (session && session.username === username) {
-        setSession(null);
-        setScreen("login");
-      }
-      return true;
-    } catch (e) {
-      setError("Une erreur est survenue. Réessaie.");
-      return false;
-    } finally {
-      setBusy(false);
+  async function deletePlayer(playerId) {
+    const ok = await callMutation("deletePlayer", { playerId });
+    if (ok && session && session.playerId === playerId) {
+      doLogout();
     }
-  }
-
-  async function doSetAccountRole(username, newRole, actingUser) {
-    setBusy(true);
-    setError("");
-    try {
-      const fresh = await loadState();
-      if (!fresh.accounts[username]) {
-        setBusy(false);
-        return false;
-      }
-      let next = {
-        ...fresh,
-        accounts: {
-          ...fresh.accounts,
-          [username]: { ...fresh.accounts[username], role: newRole },
-        },
-      };
-      next = logAction(next, actingUser, `a changé le rôle de "${username}" → ${newRole === "coach" ? "staff" : "joueur"}`);
-      await saveState(next);
-      setState(next);
-      if (session && session.username === username) {
-        setSession({ ...session, role: newRole });
-      }
-      return true;
-    } catch (e) {
-      setError("Une erreur est survenue. Réessaie.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doRenameAccount(oldUsername, newUsername, actingUser) {
-    const uname = (newUsername || "").trim().toLowerCase();
-    if (!uname) {
-      setError("Le nouvel identifiant ne peut pas être vide.");
-      return false;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const fresh = await loadState();
-      if (!fresh.accounts[oldUsername]) {
-        setBusy(false);
-        return false;
-      }
-      if (uname !== oldUsername && fresh.accounts[uname]) {
-        setError("Cet identifiant est déjà pris.");
-        setBusy(false);
-        return false;
-      }
-      const acc = fresh.accounts[oldUsername];
-      const { [oldUsername]: _removed, ...rest } = fresh.accounts;
-      let next = { ...fresh, accounts: { ...rest, [uname]: acc } };
-      next = logAction(next, actingUser, `a renommé le compte "${oldUsername}" → "${uname}"`);
-      await saveState(next);
-      setState(next);
-      if (session && session.username === oldUsername) {
-        setSession({ ...session, username: uname });
-      }
-      return true;
-    } catch (e) {
-      setError("Une erreur est survenue. Réessaie.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
+    return ok;
   }
 
   /* ---------------- Derived ---------------- */
+
 
   const me = useMemo(() => {
     if (!state || !session) return null;
@@ -805,7 +414,7 @@ export default function DragonsApp() {
         </div>
         {session && (
           <div className="topbar-right">
-            {session.role === "coach" ? (
+            {isStaffRole(session.role) ? (
               <div className="tab-switch">
                 <button
                   className={screen === "composition" ? "tsw active" : "tsw"}
@@ -830,6 +439,12 @@ export default function DragonsApp() {
                   onClick={() => setScreen("results")}
                 >
                   Résultats
+                </button>
+                <button
+                  className={screen === "standings" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("standings")}
+                >
+                  Classement
                 </button>
                 <button
                   className={screen === "player" ? "tsw active" : "tsw"}
@@ -857,6 +472,12 @@ export default function DragonsApp() {
                   onClick={() => setScreen("results")}
                 >
                   Résultats
+                </button>
+                <button
+                  className={screen === "standings" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("standings")}
+                >
+                  Classement
                 </button>
               </div>
             )}
@@ -897,58 +518,70 @@ export default function DragonsApp() {
             matches={state.matches}
             presence={state.presence[me.id] || {}}
             positions={state.positions[me.id] || {}}
-            onSetPresence={(matchId, v) => setPresence(me.id, matchId, v, session.username)}
-            onSetVehicule={(matchId, v) => setVehicule(me.id, matchId, v, session.username)}
-            onSetPosition={(slot, v) => setPosition(me.id, slot, v, session.username)}
-            onSetNumero={(v) => setNumero(me.id, v, session.username)}
+            onSetPresence={(matchId, v) => setPresence(me.id, matchId, v)}
+            onSetVehicule={(matchId, v) => setVehicule(me.id, matchId, v)}
+            onSetPosition={(slot, v) => setPosition(me.id, slot, v)}
+            onSetNumero={(v) => setNumero(me.id, v)}
             busy={busy}
           />
         )}
 
-        {session && screen === "roster" && session.role !== "coach" && (
+        {session && screen === "roster" && !isStaffRole(session.role) && (
           <PresenceRosterView state={state} />
         )}
 
         {session && screen === "results" && (
           <ResultsView
             matches={state.matches}
-            canEdit={session.role === "coach"}
-            onSetInning={(matchId, team, idx, value) => setInning(matchId, team, idx, value, session.username)}
+            canEdit={isStaffRole(session.role)}
+            onSetInning={(matchId, team, idx, value) => setInning(matchId, team, idx, value)}
           />
         )}
 
-        {session && screen === "coach" && session.role === "coach" && (
+        {session && screen === "standings" && (
+          <StandingsView
+            standings={state.standings}
+            canEdit={isStaffRole(session.role)}
+            onUpdateField={(teamId, field, value) => updateTeamField(teamId, field, value)}
+            onAddTeam={() => addTeam()}
+            onDeleteTeam={(teamId) => deleteTeam(teamId)}
+            busy={busy}
+          />
+        )}
+
+        {session && screen === "coach" && isStaffRole(session.role) && (
           <CoachView
             state={state}
             actingUser={session.username}
-            onSetPresence={(playerId, matchId, v) => setPresence(playerId, matchId, v, session.username)}
-            onResetPassword={(username, newPassword) => doResetPassword(username, newPassword, session.username)}
-            onDeleteAccount={(username) => doDeleteAccount(username, session.username)}
-            onSetAccountRole={(username, role) => doSetAccountRole(username, role, session.username)}
-            onRenameAccount={(oldU, newU) => doRenameAccount(oldU, newU, session.username)}
-            onDeletePlayer={(playerId) => deletePlayer(playerId, session.username)}
+            onSetPresence={(playerId, matchId, v) => setPresence(playerId, matchId, v)}
+            onResetPassword={(username, newPassword) => doResetPassword(username, newPassword)}
+            onDeleteAccount={(username) => doDeleteAccount(username)}
+            onSetAccountRole={(username, role) => doSetAccountRole(username, role)}
+            onRenameAccount={(oldU, newU) => doRenameAccount(oldU, newU)}
+            onDeletePlayer={(playerId) => deletePlayer(playerId)}
             currentUsername={session.username}
             currentPlayerId={session.playerId}
+            currentRole={session.role}
             busy={busy}
           />
         )}
 
-        {session && screen === "composition" && session.role === "coach" && (
+        {session && screen === "composition" && isStaffRole(session.role) && (
           <LineupView
             state={state}
             actingUser={session.username}
-            onSetDefense={(matchId, poste, playerId) => setDefenseSlot(matchId, poste, playerId, session.username)}
-            onSetBatting={(matchId, index, playerId) => setBattingSlot(matchId, index, playerId, session.username)}
+            onSetDefense={(matchId, poste, playerId) => setDefenseSlot(matchId, poste, playerId)}
+            onSetBatting={(matchId, index, playerId) => setBattingSlot(matchId, index, playerId)}
             busy={busy}
           />
         )}
 
-        {session && screen === "matches" && session.role === "coach" && (
+        {session && screen === "matches" && isStaffRole(session.role) && (
           <MatchesView
             matches={state.matches}
-            onUpdateField={(matchId, field, value) => updateMatchField(matchId, field, value, session.username)}
-            onAddMatch={() => addMatch(session.username)}
-            onDeleteMatch={(matchId) => deleteMatch(matchId, session.username)}
+            onUpdateField={(matchId, field, value) => updateMatchField(matchId, field, value)}
+            onAddMatch={() => addMatch()}
+            onDeleteMatch={(matchId) => deleteMatch(matchId)}
             busy={busy}
           />
         )}
@@ -976,7 +609,7 @@ function LoginView({ onLogin, onGoSignup, error, busy }) {
       <h2>Connexion</h2>
       <label className="field">
         <span>Identifiant</span>
-        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex: julien.farsy" />
+        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex: prénom.nom" />
       </label>
       <label className="field">
         <span>Mot de passe</span>
@@ -1022,6 +655,16 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
   const [password2, setPassword2] = useState("");
   const [isStaff, setIsStaff] = useState(false);
   const [staffCode, setStaffCode] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
+  const [ownerCode, setOwnerCode] = useState("");
+
+  const ownerModeAvailable = useMemo(() => {
+    try {
+      return typeof window !== "undefined" && window.location.search.includes("owner");
+    } catch (e) {
+      return false;
+    }
+  }, []);
 
   function suggestUsername(id) {
     if (id === "__new__") return;
@@ -1068,7 +711,7 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
 
       <label className="field">
         <span>Identifiant</span>
-        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex: julien.farsy" />
+        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex: prénom.nom" />
       </label>
       <div className="row-2">
         <label className="field">
@@ -1082,14 +725,36 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
       </div>
       {mismatch && <div className="error">Les mots de passe ne correspondent pas.</div>}
 
-      <label className="checkbox-row">
-        <input type="checkbox" checked={isStaff} onChange={(e) => setIsStaff(e.target.checked)} />
-        <span>Je fais partie du coaching staff</span>
-      </label>
-      {isStaff && (
+      {!isOwner && (
+        <label className="checkbox-row">
+          <input type="checkbox" checked={isStaff} onChange={(e) => setIsStaff(e.target.checked)} />
+          <span>Je fais partie du coaching staff</span>
+        </label>
+      )}
+      {isStaff && !isOwner && (
         <label className="field">
           <span>Code staff</span>
           <input value={staffCode} onChange={(e) => setStaffCode(e.target.value)} placeholder="Code fourni par le club" />
+        </label>
+      )}
+
+      {ownerModeAvailable && (
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={isOwner}
+            onChange={(e) => {
+              setIsOwner(e.target.checked);
+              if (e.target.checked) setIsStaff(false);
+            }}
+          />
+          <span>Compte propriétaire (accès restreint)</span>
+        </label>
+      )}
+      {isOwner && (
+        <label className="field">
+          <span>Code propriétaire</span>
+          <input value={ownerCode} onChange={(e) => setOwnerCode(e.target.value)} placeholder="Code confidentiel" />
         </label>
       )}
 
@@ -1099,7 +764,7 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
         className="btn-primary"
         disabled={busy || mismatch}
         onClick={() =>
-          onSubmit({ playerId, newNom, newPrenom, username, password, isStaff, staffCode })
+          onSubmit({ playerId, newNom, newPrenom, username, password, isStaff, staffCode, isOwner, ownerCode })
         }
       >
         {busy ? "…" : "Créer mon compte"}
@@ -1212,6 +877,7 @@ function CoachView({
   onDeletePlayer,
   currentUsername,
   currentPlayerId,
+  currentRole,
   busy,
 }) {
   const [search, setSearch] = useState("");
@@ -1280,11 +946,21 @@ function CoachView({
     });
   }
 
+  function playerLinkedStaffBlocked(playerId) {
+    const linked = Object.values(state.accounts).find((a) => a.playerId === playerId);
+    return Boolean(linked && isStaffRole(linked.role) && currentRole !== "owner");
+  }
+
+  function canDeletePlayerRow(p) {
+    return p.id !== currentPlayerId && !playerLinkedStaffBlocked(p.id);
+  }
+
   function togglePlayerSelectAll(rows) {
     setSelectedPlayers((prev) => {
-      const allSelected = rows.length > 0 && rows.every((p) => prev.has(p.id) || p.id === currentPlayerId);
+      const manageable = rows.filter(canDeletePlayerRow);
+      const allSelected = manageable.length > 0 && manageable.every((p) => prev.has(p.id));
       if (allSelected) return new Set();
-      return new Set(rows.map((p) => p.id).filter((id) => id !== currentPlayerId));
+      return new Set(manageable.map((p) => p.id));
     });
   }
 
@@ -1347,6 +1023,12 @@ function CoachView({
     setResetMsg(`Compte "${username}" supprimé.`);
   }
 
+  function canManageAccount(acc) {
+    if (acc.username === currentUsername) return false;
+    if (isStaffRole(acc.role) && currentRole !== "owner") return false;
+    return true;
+  }
+
   function toggleSelect(username) {
     setSelectedAccounts((prev) => {
       const next = new Set(prev);
@@ -1358,9 +1040,10 @@ function CoachView({
 
   function toggleSelectAll(rows) {
     setSelectedAccounts((prev) => {
-      const allSelected = rows.length > 0 && rows.every((r) => prev.has(r.username));
+      const manageable = rows.filter(canManageAccount);
+      const allSelected = manageable.length > 0 && manageable.every((r) => prev.has(r.username));
       if (allSelected) return new Set();
-      return new Set(rows.map((r) => r.username).filter((u) => u !== currentUsername));
+      return new Set(manageable.map((r) => r.username));
     });
   }
 
@@ -1435,7 +1118,7 @@ function CoachView({
           <label className="checkbox-row" style={{ marginBottom: 0 }}>
             <input
               type="checkbox"
-              checked={players.length > 0 && players.every((p) => selectedPlayers.has(p.id) || p.id === currentPlayerId)}
+              checked={players.filter(canDeletePlayerRow).length > 0 && players.filter(canDeletePlayerRow).every((p) => selectedPlayers.has(p.id))}
               onChange={() => togglePlayerSelectAll(players)}
             />
             <span>Tout sélectionner ({players.length})</span>
@@ -1478,7 +1161,7 @@ function CoachView({
                     type="checkbox"
                     checked={selectedPlayers.has(p.id)}
                     onChange={() => togglePlayerSelect(p.id)}
-                    disabled={p.id === currentPlayerId}
+                    disabled={!canDeletePlayerRow(p)}
                   />
                 </div>
                 <div className="grid-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
@@ -1504,8 +1187,14 @@ function CoachView({
                     <button
                       className="btn-danger small"
                       onClick={() => { setPlayerDeleteConfirm(p.id); setPlayerMsg(""); }}
-                      disabled={p.id === currentPlayerId}
-                      title={p.id === currentPlayerId ? "Tu ne peux pas te supprimer toi-même." : ""}
+                      disabled={p.id === currentPlayerId || playerLinkedStaffBlocked(p.id)}
+                      title={
+                        p.id === currentPlayerId
+                          ? "Tu ne peux pas te supprimer toi-même."
+                          : playerLinkedStaffBlocked(p.id)
+                          ? "Seul le compte propriétaire peut supprimer un membre du staff."
+                          : ""
+                      }
                     >
                       Supprimer
                     </button>
@@ -1547,7 +1236,7 @@ function CoachView({
           <label className="checkbox-row" style={{ marginBottom: 0 }}>
             <input
               type="checkbox"
-              checked={accountRows.length > 0 && accountRows.every((r) => selectedAccounts.has(r.username) || r.username === currentUsername)}
+              checked={accountRows.filter(canManageAccount).length > 0 && accountRows.filter(canManageAccount).every((r) => selectedAccounts.has(r.username))}
               onChange={() => toggleSelectAll(accountRows)}
             />
             <span>Tout sélectionner ({accountRows.length})</span>
@@ -1572,18 +1261,20 @@ function CoachView({
         </div>
 
         <div className="accounts-list">
-          {accountRows.map((acc) => (
+          {accountRows.map((acc) => {
+            const manageable = canManageAccount(acc);
+            return (
             <div className="account-row" key={acc.username}>
               <input
                 type="checkbox"
                 className="account-checkbox"
                 checked={selectedAccounts.has(acc.username)}
                 onChange={() => toggleSelect(acc.username)}
-                disabled={acc.username === currentUsername}
+                disabled={!manageable}
               />
               <div className="account-info">
                 <span className="account-name">{acc.playerName}</span>
-                <span className="account-user">@{acc.username}{acc.role === "coach" ? " · staff" : ""}</span>
+                <span className="account-user">@{acc.username}{acc.role === "owner" ? " · propriétaire" : acc.role === "coach" ? " · staff" : ""}</span>
               </div>
 
               {editTarget === acc.username ? (
@@ -1595,7 +1286,8 @@ function CoachView({
                   />
                   <select value={editRole} onChange={(e) => setEditRole(e.target.value)}>
                     <option value="player">Joueur</option>
-                    <option value="coach">Staff</option>
+                    {currentRole === "owner" && <option value="coach">Staff</option>}
+                    {currentRole === "owner" && <option value="owner">Propriétaire</option>}
                   </select>
                   <button className="btn-primary small" disabled={busy} onClick={() => handleSaveEdit(acc.username)}>
                     Enregistrer
@@ -1631,27 +1323,29 @@ function CoachView({
                 </div>
               ) : (
                 <div className="account-actions">
-                  <button className="btn-ghost small" onClick={() => startEdit(acc)}>
+                  <button className="btn-ghost small" onClick={() => startEdit(acc)} disabled={!manageable}>
                     Modifier
                   </button>
                   <button
                     className="btn-ghost small"
                     onClick={() => { setResetTarget(acc.username); setResetValue(""); setResetMsg(""); }}
+                    disabled={!manageable}
                   >
                     Réinitialiser le mot de passe
                   </button>
                   <button
                     className="btn-danger small"
                     onClick={() => { setDeleteTarget(acc.username); setResetMsg(""); }}
-                    disabled={acc.username === currentUsername}
-                    title={acc.username === currentUsername ? "Tu ne peux pas supprimer ton propre compte ici." : ""}
+                    disabled={!manageable}
+                    title={!manageable ? (acc.username === currentUsername ? "Tu ne peux pas supprimer ton propre compte ici." : "Seul le compte propriétaire peut gérer ce compte staff.") : ""}
                   >
                     Supprimer
                   </button>
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
           {accountRows.length === 0 && <div className="hint">Aucun compte trouvé.</div>}
         </div>
       </div>
@@ -1949,6 +1643,120 @@ function ResultsView({ matches, canEdit, onSetInning }) {
         {renderRow("dragons", "Dragons", dTotal)}
         {renderRow("adversaire", match.opponent || "Adversaire", aTotal)}
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Standings / classement view                                         */
+/* ------------------------------------------------------------------ */
+
+function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteTeam, busy }) {
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const rows = useMemo(() => {
+    const withStats = (standings || []).map((t) => {
+      const w = Number(t.w) || 0;
+      const l = Number(t.l) || 0;
+      const tt = Number(t.t) || 0;
+      const played = w + l + tt;
+      const pct = played > 0 ? w / played : 0;
+      return { ...t, w, l, t: tt, pct };
+    });
+    const sorted = [...withStats].sort((a, b) => b.pct - a.pct);
+    const leader = sorted[0];
+    return sorted.map((team) => {
+      const gb = leader ? (leader.w - team.w + (team.l - leader.l)) / 2 : 0;
+      return { ...team, gb };
+    });
+  }, [standings]);
+
+  return (
+    <div className="card">
+      <h2>Classement</h2>
+      {!canEdit && <div className="hint" style={{ marginBottom: 12 }}>Vue en lecture seule — mis à jour manuellement par le coaching staff d'après le classement officiel.</div>}
+      {canEdit && (
+        <div className="hint" style={{ marginBottom: 14 }}>
+          Recopie les chiffres depuis la page de classement officielle de la ligue. Le PCT et
+          le nombre de matchs d'écart (GB) se calculent automatiquement.
+        </div>
+      )}
+
+      <div className="standings-table">
+        <div className="standings-row standings-header">
+          <div>#</div>
+          <div>Équipe</div>
+          <div>V</div>
+          <div>D</div>
+          <div>N</div>
+          <div>PCT</div>
+          <div>GB</div>
+          {canEdit && <div></div>}
+        </div>
+        {rows.map((team, idx) => (
+          <div className="standings-row" key={team.id}>
+            <div className="standings-rank">{idx + 1}</div>
+            <div>
+              {canEdit ? (
+                <input
+                  className="standings-team-input"
+                  value={team.team}
+                  onChange={(e) => onUpdateField(team.id, "team", e.target.value)}
+                  disabled={busy}
+                />
+              ) : (
+                <span className="standings-team-name">{team.team}</span>
+              )}
+            </div>
+            {["w", "l", "t"].map((field) => (
+              <div key={field}>
+                {canEdit ? (
+                  <input
+                    type="number"
+                    className="standings-num-input"
+                    value={team[field]}
+                    onChange={(e) => onUpdateField(team.id, field, e.target.value === "" ? 0 : Number(e.target.value))}
+                    disabled={busy}
+                  />
+                ) : (
+                  <span>{team[field]}</span>
+                )}
+              </div>
+            ))}
+            <div>{team.pct.toFixed(3).replace(/^0/, "")}</div>
+            <div>{idx === 0 ? "—" : team.gb.toFixed(1)}</div>
+            {canEdit && (
+              <div>
+                {deleteConfirm === team.id ? (
+                  <div className="reset-form">
+                    <button className="btn-danger small" disabled={busy} onClick={() => { onDeleteTeam(team.id); setDeleteConfirm(null); }}>
+                      OK
+                    </button>
+                    <button className="btn-ghost small" onClick={() => setDeleteConfirm(null)}>
+                      X
+                    </button>
+                  </div>
+                ) : (
+                  <button className="btn-danger small" onClick={() => setDeleteConfirm(team.id)} disabled={busy}>
+                    Retirer
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+        {rows.length === 0 && (
+          <div className="standings-row">
+            <div className="hint" style={{ padding: "8px 0" }}>Aucune équipe pour l'instant.</div>
+          </div>
+        )}
+      </div>
+
+      {canEdit && (
+        <button className="btn-primary small" onClick={onAddTeam} disabled={busy} style={{ marginTop: 14 }}>
+          + Ajouter une équipe
+        </button>
+      )}
     </div>
   );
 }
@@ -2506,6 +2314,56 @@ const CSS = `
   font-family: 'Roboto Mono', monospace;
   font-weight: 700;
   color: var(--gold);
+}
+
+.standings-table {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.standings-row {
+  display: grid;
+  grid-template-columns: 28px 2fr 44px 44px 44px 60px 50px;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.standings-row:first-child { border-top: none; }
+.standings-header {
+  background: var(--panel-alt);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.standings-rank { font-family: 'Roboto Mono', monospace; color: var(--gold); font-weight: 700; }
+.standings-team-name { color: var(--cream); }
+.standings-num-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0c2015;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  text-align: center;
+  padding: 5px 2px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.standings-table .field input {
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.standings-team-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0c2015;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
 }
 
 .foot {
