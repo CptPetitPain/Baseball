@@ -435,6 +435,12 @@ export default function DragonsApp() {
                   Matchs
                 </button>
                 <button
+                  className={screen === "roster" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("roster")}
+                >
+                  Présences
+                </button>
+                <button
                   className={screen === "results" ? "tsw active" : "tsw"}
                   onClick={() => setScreen("results")}
                 >
@@ -526,7 +532,7 @@ export default function DragonsApp() {
           />
         )}
 
-        {session && screen === "roster" && !isStaffRole(session.role) && (
+        {session && screen === "roster" && (
           <PresenceRosterView state={state} />
         )}
 
@@ -900,10 +906,18 @@ function CoachView({
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const players = useMemo(() => {
+    const statusOrder = { present: 0, reserve: 1, absent: 2 };
     return state.roster
       .filter((p) => `${p.nom} ${p.prenom}`.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom));
-  }, [state.roster, search]);
+      .sort((a, b) => {
+        const statusA = (state.presence[a.id] || {})[activeMatch];
+        const statusB = (state.presence[b.id] || {})[activeMatch];
+        const orderA = statusOrder[statusA] ?? 3;
+        const orderB = statusOrder[statusB] ?? 3;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.nom + a.prenom).localeCompare(b.nom + b.prenom);
+      });
+  }, [state.roster, state.presence, activeMatch, search]);
 
   const counts = useMemo(() => {
     const c = { present: 0, absent: 0, reserve: 0, unknown: 0 };
@@ -1802,18 +1816,23 @@ function PresenceRosterView({ state }) {
         ))}
       </select>
       <div className="grid-table">
-        <div className="grid-header">
+        <div className="grid-header grid-header-with-vehicule">
           <div>Joueur</div>
           <div>Postes</div>
           <div>Statut</div>
+          <div>Véhicule</div>
         </div>
         {rows.map((p) => {
           const pos = state.positions[p.id] || {};
+          const vehicule = (state.presence[p.id] || {})[match.id + "-vehicule"];
           return (
-            <div className="grid-row" key={p.id}>
+            <div className="grid-row grid-row-with-vehicule" key={p.id}>
               <div className="grid-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
               <div className="grid-pos">{[pos.pos1, pos.pos2, pos.pos3].filter(Boolean).join(" · ") || "—"}</div>
               <div><StatusPill value={p.status} /></div>
+              <div className="grid-vehicule">
+                {vehicule === "Oui" ? "🚗 Oui" : vehicule === "Non" ? "Non" : "—"}
+              </div>
             </div>
           );
         })}
@@ -2089,6 +2108,10 @@ const CSS = `
 .grid-header-with-actions, .grid-row-with-actions {
   grid-template-columns: 24px 2fr 2fr 1.2fr auto;
 }
+.grid-header-with-vehicule, .grid-row-with-vehicule {
+  grid-template-columns: 2fr 2fr 1.2fr 90px;
+}
+.grid-vehicule { font-size: 12px; color: var(--cream); }
 .cell-status { background: none; border: none; padding: 0; cursor: pointer; }
 
 .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
