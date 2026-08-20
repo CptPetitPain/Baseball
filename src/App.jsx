@@ -1,0 +1,2125 @@
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { getItem, setItem } from "./storage.js";
+
+const LOGO_DATA_URI = "data:image/jpeg;base64,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";
+
+/* ------------------------------------------------------------------ */
+/* Data seeded from the club's spreadsheet ("Saisie équipe" tab)       */
+/* ------------------------------------------------------------------ */
+
+const POSTES = [
+  "Lanceur", "Catcher", "Première base", "Deuxième base", "Troisième base",
+  "Arrêt-court", "Champ gauche", "Champ centre", "Champ droit",
+  "Champ extérieur", "Utility", "Manager",
+];
+
+const MATCHES_SEED = [
+  { id: "m1", label: "Match 1", date: "12 avril", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m2", label: "Match 2", date: "19 avril", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m3", label: "Match 3", date: "26 avril", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m4", label: "Match 4", date: "3 mai", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m5", label: "Match 5", date: "10 mai", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m6", label: "Match 6", date: "17 mai", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m7", label: "Match 7", date: "31 mai", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m8", label: "Match 8", date: "7 juin", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m9", label: "Match 9", date: "14 juin", opponent: "", scoreDragons: null, scoreAdversaire: null },
+];
+
+const STATUTS = [
+  { value: "present", label: "Présent" },
+  { value: "absent", label: "Absent" },
+  { value: "reserve", label: "Sous réserve" },
+];
+
+const RAW_ROSTER = [
+  ["BAILLY", "Apolline", "15", "Champ extérieur", "", ""],
+  ["BOUHSINA", "Sami", "", "Utility", "Catcher", ""],
+  ["BREARD", "Maxime", "50", "Utility", "Deuxième base", ""],
+  ["CAPPELLE", "Geoffrey", "61", "Utility", "", ""],
+  ["DEQUECKER", "Ulrick", "63", "Champ extérieur", "Première base", ""],
+  ["DERYCKER", "Wilfrid", "87", "Arrêt-court", "Lanceur", "Première base"],
+  ["DIDAT", "Loïc", "16", "Arrêt-court", "Troisième base", "Deuxième base"],
+  ["DOISE", "Hugo", "27", "Lanceur", "Deuxième base", "Arrêt-court"],
+  ["DUFOSSE", "Martin", "59", "Catcher", "Troisième base", ""],
+  ["DUQUENNE", "Baptiste", "13", "Champ extérieur", "", ""],
+  ["FARSY", "Julien", "24", "Troisième base", "Champ centre", "Catcher"],
+  ["GRIBI", "Elwane", "5", "Champ extérieur", "", ""],
+  ["HERENT", "Francois", "84", "Utility", "Manager", "Première base"],
+  ["HERENT", "Juliette", "42", "Utility", "", ""],
+  ["JACOBS", "Julien", "12", "Champ extérieur", "", ""],
+  ["JACQUART", "Emilio", "13", "Première base", "Champ extérieur", "Lanceur"],
+  ["JAFFRE", "Nicolas", "", "", "", ""],
+  ["KARR", "Salomé", "", "", "", ""],
+  ["MISLANGHE", "Sylvain", "80", "Première base", "Champ droit", ""],
+  ["NEUFVILLE", "Heloïse", "", "", "", ""],
+  ["PATINO MURO", "Lipcius", "", "", "", ""],
+  ["PRUVOST", "Nolan", "23", "Catcher", "Champ centre", "Arrêt-court"],
+  ["SAUGET", "Eliot", "53", "Lanceur", "Première base", ""],
+  ["SAVARY", "Clement", "31", "Catcher", "Troisième base", ""],
+  ["TERRIEN", "Philemon", "72", "Champ extérieur", "", ""],
+  ["TIBERGHIEN", "Louise", "", "", "", ""],
+  ["TREPPOZ", "Simon", "20", "Champ centre", "Deuxième base", "Champ extérieur"],
+  ["VANDENBERGHE", "Thibaut", "77", "Lanceur", "Champ gauche", "Catcher"],
+  ["VIERIRA", "Jules", "", "", "", ""],
+  ["WOESTYN", "François", "48", "Lanceur", "Troisième base", "Arrêt-court"],
+  ["", "Paullou", "", "", "", ""],
+  ["POUPART", "Damien", "", "", "", ""],
+];
+
+function slugify(nom, prenom) {
+  return `${nom}-${prenom}`
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
+  id: slugify(nom || "joueur", prenom),
+  nom,
+  prenom,
+  numero,
+  pos1: p1,
+  pos2: p2,
+  pos3: p3,
+}));
+
+const STAFF_CODE = "DRAGONS2026";
+const STORAGE_KEY = "dragons-presence-app-v1";
+
+/* Field positions used for the defensive lineup diagram (excludes
+   Utility / Manager, which aren't a spot on the field). Coordinates are
+   in a 0-100 viewBox shared with the SVG diamond drawing. */
+const FIELD_POSITIONS = [
+  { key: "Lanceur", short: "P", x: 50, y: 66 },
+  { key: "Catcher", short: "C", x: 50, y: 90 },
+  { key: "Première base", short: "1B", x: 70, y: 60 },
+  { key: "Deuxième base", short: "2B", x: 59, y: 45 },
+  { key: "Troisième base", short: "3B", x: 30, y: 60 },
+  { key: "Arrêt-court", short: "SS", x: 41, y: 45 },
+  { key: "Champ gauche", short: "LF", x: 20, y: 26 },
+  { key: "Champ centre", short: "CC", x: 50, y: 12 },
+  { key: "Champ droit", short: "RF", x: 80, y: 26 },
+];
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
+
+async function sha256(text) {
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function nowLabel() {
+  const d = new Date();
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) +
+    " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function defaultState() {
+  const presence = {};
+  const positions = {};
+  INITIAL_ROSTER.forEach((p) => {
+    presence[p.id] = {};
+    positions[p.id] = { pos1: p.pos1, pos2: p.pos2, pos3: p.pos3 };
+  });
+  return {
+    roster: INITIAL_ROSTER,
+    accounts: {},
+    presence,
+    positions,
+    lineups: {},
+    matches: MATCHES_SEED,
+    auditLog: [],
+  };
+}
+
+function normalizeState(s) {
+  const base = defaultState();
+  return {
+    roster: s.roster || base.roster,
+    accounts: s.accounts || {},
+    presence: s.presence || {},
+    positions: s.positions || {},
+    lineups: s.lineups || {},
+    matches: s.matches && s.matches.length ? s.matches : base.matches,
+    auditLog: s.auditLog || [],
+  };
+}
+
+function getLineup(state, matchId) {
+  const l = state.lineups[matchId] || { defense: {}, batting: [] };
+  const batting = Array.from({ length: 9 }, (_, i) => l.batting[i] || "");
+  return { defense: l.defense || {}, batting };
+}
+
+async function loadState() {
+  try {
+    const res = await getItem(STORAGE_KEY);
+    if (res && res.value) return normalizeState(JSON.parse(res.value));
+  } catch (e) {
+    /* key doesn't exist yet */
+  }
+  const initial = defaultState();
+  await setItem(STORAGE_KEY, JSON.stringify(initial));
+  return initial;
+}
+
+async function saveState(state) {
+  await setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/* ------------------------------------------------------------------ */
+/* Small UI atoms                                                      */
+/* ------------------------------------------------------------------ */
+
+function StatusPill({ value }) {
+  const map = {
+    present: { bg: "var(--ok)", label: "Présent" },
+    absent: { bg: "var(--bad)", label: "Absent" },
+    reserve: { bg: "var(--warn)", label: "Sous réserve" },
+  };
+  const s = map[value];
+  if (!s) return <span className="pill pill-empty">—</span>;
+  return (
+    <span className="pill" style={{ background: s.bg }}>
+      {s.label}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Main App                                                            */
+/* ------------------------------------------------------------------ */
+
+export default function DragonsApp() {
+  const [state, setState] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [session, setSession] = useState(null); // { username, playerId, role }
+  const [screen, setScreen] = useState("login"); // login | signup | player | coach
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    loadState()
+      .then((s) => {
+        setState(s);
+        setLoading(false);
+      })
+      .catch((e) => {
+        setError("Impossible de charger les données. Réessaie dans un instant.");
+        setLoading(false);
+      });
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const s = await loadState();
+    setState(s);
+    return s;
+  }, []);
+
+  async function withMutation(fn) {
+    setBusy(true);
+    setError("");
+    try {
+      const fresh = await loadState();
+      const next = fn(fresh);
+      if (next) {
+        await saveState(next);
+        setState(next);
+      }
+    } catch (e) {
+      setError("Une erreur est survenue pendant la sauvegarde. Réessaie.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function logAction(s, username, action) {
+    const entry = { ts: Date.now(), tsLabel: nowLabel(), user: username, action };
+    const log = [entry, ...(s.auditLog || [])].slice(0, 300);
+    return { ...s, auditLog: log };
+  }
+
+  /* ---------------- Auth actions ---------------- */
+
+  async function handleSignup({ playerId, newNom, newPrenom, username, password, isStaff, staffCode }) {
+    await withMutation((s) => {
+      const uname = username.trim().toLowerCase();
+      if (!uname || !password) {
+        setError("Identifiant et mot de passe sont obligatoires.");
+        return null;
+      }
+      if (s.accounts[uname]) {
+        setError("Cet identifiant est déjà pris.");
+        return null;
+      }
+      if (isStaff && staffCode.trim() !== STAFF_CODE) {
+        setError("Code staff incorrect.");
+        return null;
+      }
+      let finalPlayerId = playerId;
+      let roster = s.roster;
+      let presence = s.presence;
+      let positions = s.positions;
+
+      if (playerId === "__new__") {
+        if (!newNom.trim() && !newPrenom.trim()) {
+          setError("Indique ton nom et ton prénom.");
+          return null;
+        }
+        finalPlayerId = slugify(newNom || "joueur", newPrenom) + "-" + Math.random().toString(36).slice(2, 6);
+        roster = [...roster, { id: finalPlayerId, nom: newNom.toUpperCase(), prenom: newPrenom, numero: "", pos1: "", pos2: "", pos3: "" }];
+        presence = { ...presence, [finalPlayerId]: {} };
+        positions = { ...positions, [finalPlayerId]: { pos1: "", pos2: "", pos3: "" } };
+      }
+
+      return {
+        ...s,
+        roster,
+        presence,
+        positions,
+        accounts: {
+          ...s.accounts,
+          [uname]: {
+            passwordHash: null, // set below after hashing (async)
+            playerId: finalPlayerId,
+            role: isStaff ? "coach" : "player",
+          },
+        },
+      };
+    });
+  }
+
+  /* Because password hashing is async and withMutation is sync-friendly,
+     we do signup in two explicit steps below via a dedicated function. */
+
+  async function doSignup(form) {
+    setBusy(true);
+    setError("");
+    try {
+      const uname = form.username.trim().toLowerCase();
+      if (!uname || !form.password) {
+        setError("Identifiant et mot de passe sont obligatoires.");
+        setBusy(false);
+        return;
+      }
+      if (form.password.length < 4) {
+        setError("Le mot de passe doit faire au moins 4 caractères.");
+        setBusy(false);
+        return;
+      }
+      if (form.isStaff && form.staffCode.trim() !== STAFF_CODE) {
+        setError("Code staff incorrect.");
+        setBusy(false);
+        return;
+      }
+      const hash = await sha256(form.password);
+      const fresh = await loadState();
+
+      if (fresh.accounts[uname]) {
+        setError("Cet identifiant est déjà pris.");
+        setBusy(false);
+        return;
+      }
+
+      let finalPlayerId = form.playerId;
+      let roster = fresh.roster;
+      let presence = fresh.presence;
+      let positions = fresh.positions;
+
+      if (form.playerId === "__new__") {
+        if (!form.newNom.trim() && !form.newPrenom.trim()) {
+          setError("Indique ton nom et ton prénom.");
+          setBusy(false);
+          return;
+        }
+        finalPlayerId = slugify(form.newNom || "joueur", form.newPrenom) + "-" + Math.random().toString(36).slice(2, 6);
+        roster = [...roster, { id: finalPlayerId, nom: form.newNom.toUpperCase(), prenom: form.newPrenom, numero: "", pos1: "", pos2: "", pos3: "" }];
+        presence = { ...presence, [finalPlayerId]: {} };
+        positions = { ...positions, [finalPlayerId]: { pos1: "", pos2: "", pos3: "" } };
+      } else {
+        // check playerId not already claimed by another account
+        const alreadyClaimed = Object.values(fresh.accounts).some((a) => a.playerId === finalPlayerId);
+        if (alreadyClaimed) {
+          setError("Ce joueur a déjà un compte. Connecte-toi ou choisis \"Nouveau joueur\".");
+          setBusy(false);
+          return;
+        }
+      }
+
+      let next = {
+        ...fresh,
+        roster,
+        presence,
+        positions,
+        accounts: {
+          ...fresh.accounts,
+          [uname]: {
+            passwordHash: hash,
+            playerId: finalPlayerId,
+            role: form.isStaff ? "coach" : "player",
+          },
+        },
+      };
+      next = logAction(next, uname, "a créé son compte" + (form.isStaff ? " (staff)" : ""));
+
+      await saveState(next);
+      setState(next);
+      setSession({ username: uname, playerId: finalPlayerId, role: form.isStaff ? "coach" : "player" });
+      setScreen(form.isStaff ? "composition" : "player");
+    } catch (e) {
+      setError("Une erreur est survenue. Réessaie.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doLogin(username, password) {
+    setBusy(true);
+    setError("");
+    try {
+      const uname = username.trim().toLowerCase();
+      const fresh = await loadState();
+      const acc = fresh.accounts[uname];
+      if (!acc) {
+        setError("Identifiant inconnu.");
+        setBusy(false);
+        return;
+      }
+      const hash = await sha256(password);
+      if (hash !== acc.passwordHash) {
+        setError("Mot de passe incorrect.");
+        setBusy(false);
+        return;
+      }
+      setState(fresh);
+      setSession({ username: uname, playerId: acc.playerId, role: acc.role });
+      setScreen(acc.role === "coach" ? "composition" : "player");
+    } catch (e) {
+      setError("Une erreur est survenue. Réessaie.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function doLogout() {
+    setSession(null);
+    setScreen("login");
+    setError("");
+  }
+
+  /* ---------------- Player actions ---------------- */
+
+  async function setPresence(playerId, matchId, statusValue, actingUser) {
+    await withMutation((s) => {
+      const player = s.roster.find((p) => p.id === playerId);
+      const prevPresence = s.presence[playerId] || {};
+      const next = {
+        ...s,
+        presence: {
+          ...s.presence,
+          [playerId]: { ...prevPresence, [matchId]: statusValue },
+        },
+      };
+      const matchLabel = s.matches.find((m) => m.id === matchId)?.label || matchId;
+      const statusLabel = STATUTS.find((st) => st.value === statusValue)?.label || "Non renseigné";
+      const targetLabel = player ? `${player.prenom} ${player.nom}` : playerId;
+      return logAction(
+        next,
+        actingUser,
+        `a mis à jour "${matchLabel}" → ${statusLabel} pour ${targetLabel}`
+      );
+    });
+  }
+
+  async function setVehicule(playerId, matchId, value, actingUser) {
+    await withMutation((s) => {
+      const key = matchId + "-vehicule";
+      const prevPresence = s.presence[playerId] || {};
+      const next = {
+        ...s,
+        presence: {
+          ...s.presence,
+          [playerId]: { ...prevPresence, [key]: value },
+        },
+      };
+      const player = s.roster.find((p) => p.id === playerId);
+      const matchLabel = s.matches.find((m) => m.id === matchId)?.label || matchId;
+      const targetLabel = player ? `${player.prenom} ${player.nom}` : playerId;
+      return logAction(next, actingUser, `a mis à jour véhicule "${matchLabel}" → ${value} pour ${targetLabel}`);
+    });
+  }
+
+  async function setNumero(playerId, value, actingUser) {
+    await withMutation((s) => {
+      const roster = s.roster.map((p) => (p.id === playerId ? { ...p, numero: value } : p));
+      const next = { ...s, roster };
+      const player = roster.find((p) => p.id === playerId);
+      const targetLabel = player ? `${player.prenom} ${player.nom}` : playerId;
+      return logAction(next, actingUser, `a changé son numéro de maillot → ${value || "—"} (${targetLabel})`);
+    });
+  }
+
+  async function setPosition(playerId, slot, value, actingUser) {
+    await withMutation((s) => {
+      const prevPos = s.positions[playerId] || {};
+      const next = {
+        ...s,
+        positions: { ...s.positions, [playerId]: { ...prevPos, [slot]: value } },
+      };
+      const player = s.roster.find((p) => p.id === playerId);
+      const targetLabel = player ? `${player.prenom} ${player.nom}` : playerId;
+      return logAction(next, actingUser, `a changé sa position ${slot} → ${value || "—"} (${targetLabel})`);
+    });
+  }
+
+  /* ---------------- Coach lineup actions ---------------- */
+
+  async function setDefenseSlot(matchId, posteKey, playerId, actingUser) {
+    await withMutation((s) => {
+      const lineup = getLineup(s, matchId);
+      const defense = { ...lineup.defense };
+      if (playerId) defense[posteKey] = playerId;
+      else delete defense[posteKey];
+      const next = {
+        ...s,
+        lineups: { ...s.lineups, [matchId]: { ...lineup, defense } },
+      };
+      const player = s.roster.find((p) => p.id === playerId);
+      const matchLabel = s.matches.find((m) => m.id === matchId)?.label || matchId;
+      const action = playerId
+        ? `a placé ${player ? player.prenom + " " + player.nom : playerId} à ${posteKey} (${matchLabel})`
+        : `a vidé le poste ${posteKey} (${matchLabel})`;
+      return logAction(next, actingUser, action);
+    });
+  }
+
+  async function setBattingSlot(matchId, index, playerId, actingUser) {
+    await withMutation((s) => {
+      const lineup = getLineup(s, matchId);
+      const batting = [...lineup.batting];
+      batting[index] = playerId || "";
+      const next = {
+        ...s,
+        lineups: { ...s.lineups, [matchId]: { ...lineup, batting } },
+      };
+      const matchLabel = s.matches.find((m) => m.id === matchId)?.label || matchId;
+      return logAction(next, actingUser, `a mis à jour l'ordre au bâton (position ${index + 1}) pour ${matchLabel}`);
+    });
+  }
+
+  async function updateMatchField(matchId, field, value, actingUser) {
+    await withMutation((s) => {
+      const matches = s.matches.map((m) => (m.id === matchId ? { ...m, [field]: value } : m));
+      const next = { ...s, matches };
+      const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
+      const fieldLabels = {
+        label: "le nom",
+        date: "la date",
+        opponent: "l'équipe adverse",
+        scoreDragons: "le score Dragons",
+        scoreAdversaire: "le score adverse",
+      };
+      return logAction(next, actingUser, `a modifié ${fieldLabels[field] || field} de ${matchLabel}`);
+    });
+  }
+
+  async function addMatch(actingUser) {
+    await withMutation((s) => {
+      const id = "m-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      const newMatch = {
+        id,
+        label: `Match ${s.matches.length + 1}`,
+        date: "",
+        opponent: "",
+        scoreDragons: null,
+        scoreAdversaire: null,
+      };
+      const next = { ...s, matches: [...s.matches, newMatch] };
+      return logAction(next, actingUser, `a ajouté "${newMatch.label}"`);
+    });
+  }
+
+  async function deleteMatch(matchId, actingUser) {
+    await withMutation((s) => {
+      const removed = s.matches.find((m) => m.id === matchId);
+      const matches = s.matches.filter((m) => m.id !== matchId);
+      const lineups = { ...s.lineups };
+      delete lineups[matchId];
+      const presence = {};
+      Object.entries(s.presence).forEach(([playerId, rec]) => {
+        const { [matchId]: _a, [matchId + "-vehicule"]: _b, ...rest } = rec;
+        presence[playerId] = rest;
+      });
+      const next = { ...s, matches, lineups, presence };
+      return logAction(next, actingUser, `a supprimé "${removed ? removed.label : matchId}"`);
+    });
+  }
+
+  async function doResetPassword(username, newPassword, actingUser) {
+    if (!newPassword || newPassword.length < 4) {
+      setError("Le nouveau mot de passe doit faire au moins 4 caractères.");
+      return false;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const hash = await sha256(newPassword);
+      const fresh = await loadState();
+      if (!fresh.accounts[username]) {
+        setError("Compte introuvable.");
+        setBusy(false);
+        return false;
+      }
+      let next = {
+        ...fresh,
+        accounts: {
+          ...fresh.accounts,
+          [username]: { ...fresh.accounts[username], passwordHash: hash },
+        },
+      };
+      next = logAction(next, actingUser, `a réinitialisé le mot de passe de "${username}"`);
+      await saveState(next);
+      setState(next);
+      return true;
+    } catch (e) {
+      setError("Une erreur est survenue. Réessaie.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doDeleteAccount(username, actingUser) {
+    setBusy(true);
+    setError("");
+    try {
+      const fresh = await loadState();
+      if (!fresh.accounts[username]) {
+        setBusy(false);
+        return false;
+      }
+      const { [username]: removed, ...rest } = fresh.accounts;
+      let next = { ...fresh, accounts: rest };
+      next = logAction(next, actingUser, `a supprimé le compte "${username}"`);
+      await saveState(next);
+      setState(next);
+      if (session && session.username === username) {
+        setSession(null);
+        setScreen("login");
+      }
+      return true;
+    } catch (e) {
+      setError("Une erreur est survenue. Réessaie.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doSetAccountRole(username, newRole, actingUser) {
+    setBusy(true);
+    setError("");
+    try {
+      const fresh = await loadState();
+      if (!fresh.accounts[username]) {
+        setBusy(false);
+        return false;
+      }
+      let next = {
+        ...fresh,
+        accounts: {
+          ...fresh.accounts,
+          [username]: { ...fresh.accounts[username], role: newRole },
+        },
+      };
+      next = logAction(next, actingUser, `a changé le rôle de "${username}" → ${newRole === "coach" ? "staff" : "joueur"}`);
+      await saveState(next);
+      setState(next);
+      if (session && session.username === username) {
+        setSession({ ...session, role: newRole });
+      }
+      return true;
+    } catch (e) {
+      setError("Une erreur est survenue. Réessaie.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doRenameAccount(oldUsername, newUsername, actingUser) {
+    const uname = (newUsername || "").trim().toLowerCase();
+    if (!uname) {
+      setError("Le nouvel identifiant ne peut pas être vide.");
+      return false;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const fresh = await loadState();
+      if (!fresh.accounts[oldUsername]) {
+        setBusy(false);
+        return false;
+      }
+      if (uname !== oldUsername && fresh.accounts[uname]) {
+        setError("Cet identifiant est déjà pris.");
+        setBusy(false);
+        return false;
+      }
+      const acc = fresh.accounts[oldUsername];
+      const { [oldUsername]: _removed, ...rest } = fresh.accounts;
+      let next = { ...fresh, accounts: { ...rest, [uname]: acc } };
+      next = logAction(next, actingUser, `a renommé le compte "${oldUsername}" → "${uname}"`);
+      await saveState(next);
+      setState(next);
+      if (session && session.username === oldUsername) {
+        setSession({ ...session, username: uname });
+      }
+      return true;
+    } catch (e) {
+      setError("Une erreur est survenue. Réessaie.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* ---------------- Derived ---------------- */
+
+  const me = useMemo(() => {
+    if (!state || !session) return null;
+    return state.roster.find((p) => p.id === session.playerId) || null;
+  }, [state, session]);
+
+  /* ---------------- Render ---------------- */
+
+  if (loading) {
+    return (
+      <div className="dragons-app">
+        <style>{CSS}</style>
+        <div className="center-screen">Chargement…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dragons-app">
+      <style>{CSS}</style>
+
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-emblem"><img src={LOGO_DATA_URI} alt="Logo Dragons de Ronchin" /></span>
+          <div>
+            <div className="brand-title">DRAGONS DE RONCHIN</div>
+            <div className="brand-sub">Feuille de présence</div>
+          </div>
+        </div>
+        {session && (
+          <div className="topbar-right">
+            {session.role === "coach" && (
+              <div className="tab-switch">
+                <button
+                  className={screen === "composition" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("composition")}
+                >
+                  Composition
+                </button>
+                <button
+                  className={screen === "coach" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("coach")}
+                >
+                  Suivi
+                </button>
+                <button
+                  className={screen === "matches" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("matches")}
+                >
+                  Matchs
+                </button>
+                <button
+                  className={screen === "player" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("player")}
+                >
+                  Ma présence
+                </button>
+              </div>
+            )}
+            <span className="who">
+              {me ? `${me.prenom} ${me.nom}` : session.username}
+            </span>
+            <button className="btn-ghost" onClick={doLogout}>
+              Déconnexion
+            </button>
+          </div>
+        )}
+      </header>
+
+      <main className="content">
+        {!session && screen === "login" && (
+          <LoginView
+            onLogin={doLogin}
+            onGoSignup={() => { setError(""); setScreen("signup"); }}
+            error={error}
+            busy={busy}
+          />
+        )}
+
+        {!session && screen === "signup" && (
+          <SignupView
+            roster={state.roster}
+            accounts={state.accounts}
+            onSubmit={doSignup}
+            onGoLogin={() => { setError(""); setScreen("login"); }}
+            error={error}
+            busy={busy}
+          />
+        )}
+
+        {session && screen === "player" && me && (
+          <PlayerView
+            player={me}
+            matches={state.matches}
+            presence={state.presence[me.id] || {}}
+            positions={state.positions[me.id] || {}}
+            onSetPresence={(matchId, v) => setPresence(me.id, matchId, v, session.username)}
+            onSetVehicule={(matchId, v) => setVehicule(me.id, matchId, v, session.username)}
+            onSetPosition={(slot, v) => setPosition(me.id, slot, v, session.username)}
+            onSetNumero={(v) => setNumero(me.id, v, session.username)}
+            busy={busy}
+          />
+        )}
+
+        {session && screen === "coach" && session.role === "coach" && (
+          <CoachView
+            state={state}
+            actingUser={session.username}
+            onSetPresence={(playerId, matchId, v) => setPresence(playerId, matchId, v, session.username)}
+            onResetPassword={(username, newPassword) => doResetPassword(username, newPassword, session.username)}
+            onDeleteAccount={(username) => doDeleteAccount(username, session.username)}
+            onSetAccountRole={(username, role) => doSetAccountRole(username, role, session.username)}
+            onRenameAccount={(oldU, newU) => doRenameAccount(oldU, newU, session.username)}
+            currentUsername={session.username}
+            busy={busy}
+          />
+        )}
+
+        {session && screen === "composition" && session.role === "coach" && (
+          <LineupView
+            state={state}
+            actingUser={session.username}
+            onSetDefense={(matchId, poste, playerId) => setDefenseSlot(matchId, poste, playerId, session.username)}
+            onSetBatting={(matchId, index, playerId) => setBattingSlot(matchId, index, playerId, session.username)}
+            busy={busy}
+          />
+        )}
+
+        {session && screen === "matches" && session.role === "coach" && (
+          <MatchesView
+            matches={state.matches}
+            onUpdateField={(matchId, field, value) => updateMatchField(matchId, field, value, session.username)}
+            onAddMatch={() => addMatch(session.username)}
+            onDeleteMatch={(matchId) => deleteMatch(matchId, session.username)}
+            busy={busy}
+          />
+        )}
+      </main>
+
+      <footer className="foot">
+        Données partagées entre les membres connectés à cette application. Ce n'est pas un
+        système d'authentification de niveau professionnel — évite de réutiliser un mot de
+        passe important.
+      </footer>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Login                                                               */
+/* ------------------------------------------------------------------ */
+
+function LoginView({ onLogin, onGoSignup, error, busy }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  return (
+    <div className="card auth-card">
+      <h2>Connexion</h2>
+      <label className="field">
+        <span>Identifiant</span>
+        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex: julien.farsy" />
+      </label>
+      <label className="field">
+        <span>Mot de passe</span>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </label>
+      {error && <div className="error">{error}</div>}
+      <button
+        className="btn-primary"
+        disabled={busy}
+        onClick={() => onLogin(username, password)}
+      >
+        {busy ? "…" : "Se connecter"}
+      </button>
+      <button className="btn-link" onClick={onGoSignup}>
+        Pas encore de compte ? Créer un compte
+      </button>
+      <div className="forgot-hint">
+        Mot de passe oublié ? Demande à un membre du coaching staff de le réinitialiser
+        (onglet Suivi → Comptes).
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Signup                                                              */
+/* ------------------------------------------------------------------ */
+
+function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
+  const claimedIds = useMemo(
+    () => new Set(Object.values(accounts).map((a) => a.playerId)),
+    [accounts]
+  );
+  const available = roster
+    .filter((p) => !claimedIds.has(p.id))
+    .sort((a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom));
+
+  const [playerId, setPlayerId] = useState(available[0]?.id || "__new__");
+  const [newNom, setNewNom] = useState("");
+  const [newPrenom, setNewPrenom] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [isStaff, setIsStaff] = useState(false);
+  const [staffCode, setStaffCode] = useState("");
+
+  function suggestUsername(id) {
+    if (id === "__new__") return;
+    const p = roster.find((r) => r.id === id);
+    if (p) setUsername(slugify(p.nom, p.prenom));
+  }
+
+  const mismatch = password && password2 && password !== password2;
+
+  return (
+    <div className="card auth-card">
+      <h2>Créer un compte</h2>
+
+      <label className="field">
+        <span>Qui es-tu ?</span>
+        <select
+          value={playerId}
+          onChange={(e) => {
+            setPlayerId(e.target.value);
+            suggestUsername(e.target.value);
+          }}
+        >
+          {available.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.nom} {p.prenom}
+            </option>
+          ))}
+          <option value="__new__">— Je ne suis pas dans la liste —</option>
+        </select>
+      </label>
+
+      {playerId === "__new__" && (
+        <div className="row-2">
+          <label className="field">
+            <span>Nom</span>
+            <input value={newNom} onChange={(e) => setNewNom(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Prénom</span>
+            <input value={newPrenom} onChange={(e) => setNewPrenom(e.target.value)} />
+          </label>
+        </div>
+      )}
+
+      <label className="field">
+        <span>Identifiant</span>
+        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex: julien.farsy" />
+      </label>
+      <div className="row-2">
+        <label className="field">
+          <span>Mot de passe</span>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Confirmer</span>
+          <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} />
+        </label>
+      </div>
+      {mismatch && <div className="error">Les mots de passe ne correspondent pas.</div>}
+
+      <label className="checkbox-row">
+        <input type="checkbox" checked={isStaff} onChange={(e) => setIsStaff(e.target.checked)} />
+        <span>Je fais partie du coaching staff</span>
+      </label>
+      {isStaff && (
+        <label className="field">
+          <span>Code staff</span>
+          <input value={staffCode} onChange={(e) => setStaffCode(e.target.value)} placeholder="Code fourni par le club" />
+        </label>
+      )}
+
+      {error && <div className="error">{error}</div>}
+
+      <button
+        className="btn-primary"
+        disabled={busy || mismatch}
+        onClick={() =>
+          onSubmit({ playerId, newNom, newPrenom, username, password, isStaff, staffCode })
+        }
+      >
+        {busy ? "…" : "Créer mon compte"}
+      </button>
+      <button className="btn-link" onClick={onGoLogin}>
+        J'ai déjà un compte
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Player view                                                         */
+/* ------------------------------------------------------------------ */
+
+function PlayerView({ player, matches, presence, positions, onSetPresence, onSetVehicule, onSetPosition, onSetNumero, busy }) {
+  return (
+    <div>
+      <div className="card">
+        <h2>Mes infos</h2>
+        <div className="me-grid">
+          <div>
+            <div className="me-label">Joueur</div>
+            <div className="me-value">{player.prenom} {player.nom}</div>
+          </div>
+        </div>
+        <label className="field" style={{ maxWidth: 160 }}>
+          <span>Numéro de maillot</span>
+          <input
+            value={player.numero || ""}
+            onChange={(e) => onSetNumero(e.target.value)}
+            disabled={busy}
+            placeholder="ex: 24"
+            inputMode="numeric"
+          />
+        </label>
+        <div className="pos-editor">
+          {["pos1", "pos2", "pos3"].map((slot, i) => (
+            <label className="field" key={slot}>
+              <span>Poste {i + 1}</span>
+              <select
+                value={positions[slot] || ""}
+                onChange={(e) => onSetPosition(slot, e.target.value)}
+                disabled={busy}
+              >
+                <option value="">—</option>
+                {POSTES.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Mes présences</h2>
+        <div className="match-list">
+          {matches.map((m) => {
+            const status = presence[m.id];
+            const vehicule = presence[m.id + "-vehicule"];
+            return (
+              <div className="match-row" key={m.id}>
+                <div className="match-info">
+                  <div className="match-name">{m.label}{m.opponent ? ` vs ${m.opponent}` : ""}</div>
+                  <div className="match-date">{m.date}</div>
+                </div>
+                <div className="status-btns">
+                  {STATUTS.map((st) => (
+                    <button
+                      key={st.value}
+                      className={"status-btn " + st.value + (status === st.value ? " selected" : "")}
+                      onClick={() => onSetPresence(m.id, st.value)}
+                      disabled={busy}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+                <label className="vehicule-toggle">
+                  <input
+                    type="checkbox"
+                    checked={vehicule === "Oui"}
+                    onChange={(e) => onSetVehicule(m.id, e.target.checked ? "Oui" : "Non")}
+                    disabled={busy}
+                  />
+                  <span>Véhicule</span>
+                </label>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Coach view                                                          */
+/* ------------------------------------------------------------------ */
+
+function CoachView({
+  state,
+  actingUser,
+  onSetPresence,
+  onResetPassword,
+  onDeleteAccount,
+  onSetAccountRole,
+  onRenameAccount,
+  currentUsername,
+  busy,
+}) {
+  const [search, setSearch] = useState("");
+  const [activeMatch, setActiveMatch] = useState(state.matches[0].id);
+  const [resetTarget, setResetTarget] = useState(null); // username being reset
+  const [resetValue, setResetValue] = useState("");
+  const [resetMsg, setResetMsg] = useState("");
+  const [editTarget, setEditTarget] = useState(null); // username being edited
+  const [editUsername, setEditUsername] = useState("");
+  const [editRole, setEditRole] = useState("player");
+  const [deleteTarget, setDeleteTarget] = useState(null); // username pending delete confirm
+  const [accountSearch, setAccountSearch] = useState("");
+  const [selectedAccounts, setSelectedAccounts] = useState(() => new Set());
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const players = useMemo(() => {
+    return state.roster
+      .filter((p) => `${p.nom} ${p.prenom}`.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom));
+  }, [state.roster, search]);
+
+  const counts = useMemo(() => {
+    const c = { present: 0, absent: 0, reserve: 0, unknown: 0 };
+    state.roster.forEach((p) => {
+      const v = (state.presence[p.id] || {})[activeMatch];
+      if (v === "present") c.present++;
+      else if (v === "absent") c.absent++;
+      else if (v === "reserve") c.reserve++;
+      else c.unknown++;
+    });
+    return c;
+  }, [state, activeMatch]);
+
+  const posteCounts = useMemo(() => {
+    return POSTES.map((poste) => {
+      const count = state.roster.filter((p) => {
+        const status = (state.presence[p.id] || {})[activeMatch];
+        if (status !== "present" && status !== "reserve") return false;
+        const pos = state.positions[p.id] || {};
+        return pos.pos1 === poste || pos.pos2 === poste || pos.pos3 === poste;
+      }).length;
+      return { poste, count };
+    });
+  }, [state, activeMatch]);
+
+  function cycleStatus(playerId) {
+    const current = (state.presence[playerId] || {})[activeMatch] || "";
+    const order = ["", "present", "absent", "reserve"];
+    const idx = order.indexOf(current);
+    const next = order[(idx === -1 ? 0 : idx + 1) % order.length];
+    onSetPresence(playerId, activeMatch, next);
+  }
+
+  async function handleReset(username) {
+    setResetMsg("");
+    const ok = await onResetPassword(username, resetValue);
+    if (ok) {
+      setResetMsg(`Mot de passe de "${username}" mis à jour. Communique-le directement à la personne concernée.`);
+      setResetTarget(null);
+      setResetValue("");
+    }
+  }
+
+  function startEdit(acc) {
+    setEditTarget(acc.username);
+    setEditUsername(acc.username);
+    setEditRole(acc.role);
+    setResetMsg("");
+  }
+
+  async function handleSaveEdit(oldUsername) {
+    setResetMsg("");
+    let ok = true;
+    if (editUsername.trim().toLowerCase() !== oldUsername) {
+      ok = await onRenameAccount(oldUsername, editUsername);
+    }
+    const finalUsername = ok ? editUsername.trim().toLowerCase() : oldUsername;
+    if (ok && editRole !== state.accounts[oldUsername]?.role) {
+      ok = await onSetAccountRole(finalUsername, editRole);
+    }
+    if (ok) {
+      setEditTarget(null);
+      setResetMsg("Compte mis à jour.");
+    }
+  }
+
+  async function handleConfirmDelete(username) {
+    await onDeleteAccount(username);
+    setDeleteTarget(null);
+    setResetMsg(`Compte "${username}" supprimé.`);
+  }
+
+  function toggleSelect(username) {
+    setSelectedAccounts((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(rows) {
+    setSelectedAccounts((prev) => {
+      const allSelected = rows.length > 0 && rows.every((r) => prev.has(r.username));
+      if (allSelected) return new Set();
+      return new Set(rows.map((r) => r.username).filter((u) => u !== currentUsername));
+    });
+  }
+
+  async function handleBulkDelete() {
+    setBulkBusy(true);
+    setResetMsg("");
+    const usernames = Array.from(selectedAccounts);
+    for (const username of usernames) {
+      await onDeleteAccount(username);
+    }
+    setBulkBusy(false);
+    setBulkConfirm(false);
+    setSelectedAccounts(new Set());
+    setResetMsg(`${usernames.length} compte(s) supprimé(s).`);
+  }
+
+  const accountRows = Object.entries(state.accounts)
+    .map(([username, acc]) => {
+      const player = state.roster.find((p) => p.id === acc.playerId);
+      return { username, ...acc, playerName: player ? `${player.prenom} ${player.nom}` : acc.playerId };
+    })
+    .filter((acc) =>
+      accountSearch.trim() === "" ||
+      `${acc.playerName} ${acc.username}`.toLowerCase().includes(accountSearch.toLowerCase())
+    )
+    .sort((a, b) => a.playerName.localeCompare(b.playerName));
+
+  return (
+    <div>
+      <div className="card">
+        <h2>Vue d'ensemble par match</h2>
+        <div className="match-tabs">
+          {state.matches.map((m) => (
+            <button
+              key={m.id}
+              className={"mtab" + (activeMatch === m.id ? " active" : "")}
+              onClick={() => setActiveMatch(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="counts-row">
+          <span className="count-chip present">Présents: {counts.present}</span>
+          <span className="count-chip absent">Absents: {counts.absent}</span>
+          <span className="count-chip reserve">Sous réserve: {counts.reserve}</span>
+          <span className="count-chip unknown">Non renseigné: {counts.unknown}</span>
+        </div>
+
+        <div className="poste-summary">
+          <div className="poste-summary-title">Postes disponibles pour ce match</div>
+          <div className="poste-chip-row">
+            {posteCounts.map(({ poste, count }) => (
+              <span
+                key={poste}
+                className={"poste-chip " + (count === 0 ? "poste-zero" : count === 1 ? "poste-low" : "poste-ok")}
+              >
+                {poste} <strong>{count}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <input
+          className="search"
+          placeholder="Rechercher un joueur…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+
+        <div className="grid-table">
+          <div className="grid-header">
+            <div>Joueur</div>
+            <div>Postes</div>
+            <div>Statut — {state.matches.find((m) => m.id === activeMatch)?.label}</div>
+          </div>
+          {players.map((p) => {
+            const pos = state.positions[p.id] || {};
+            const status = (state.presence[p.id] || {})[activeMatch];
+            return (
+              <div className="grid-row" key={p.id}>
+                <div className="grid-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
+                <div className="grid-pos">
+                  {[pos.pos1, pos.pos2, pos.pos3].filter(Boolean).join(" · ") || "—"}
+                </div>
+                <div>
+                  <button className="cell-status" style={{ cursor: busy ? "wait" : "pointer" }} onClick={() => !busy && cycleStatus(p.id)}>
+                    <StatusPill value={status} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="hint">Clique sur un statut pour le faire tourner (Présent → Absent → Sous réserve → vide).</div>
+      </div>
+
+      <div className="card">
+        <h2>Journal des modifications</h2>
+        <div className="audit-list">
+          {state.auditLog.length === 0 && <div className="hint">Aucune modification pour l'instant.</div>}
+          {state.auditLog.map((entry, i) => (
+            <div className="audit-row" key={i}>
+              <span className="audit-time">{entry.tsLabel}</span>
+              <span className="audit-user">{entry.user}</span>
+              <span className="audit-action">{entry.action}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Comptes</h2>
+        {resetMsg && <div className="ok-msg">{resetMsg}</div>}
+
+        <input
+          className="search"
+          placeholder="Rechercher un compte par nom ou identifiant…"
+          value={accountSearch}
+          onChange={(e) => setAccountSearch(e.target.value)}
+        />
+
+        <div className="bulk-bar">
+          <label className="checkbox-row" style={{ marginBottom: 0 }}>
+            <input
+              type="checkbox"
+              checked={accountRows.length > 0 && accountRows.every((r) => selectedAccounts.has(r.username) || r.username === currentUsername)}
+              onChange={() => toggleSelectAll(accountRows)}
+            />
+            <span>Tout sélectionner ({accountRows.length})</span>
+          </label>
+
+          {selectedAccounts.size > 0 && !bulkConfirm && (
+            <button className="btn-danger small" onClick={() => setBulkConfirm(true)}>
+              Supprimer la sélection ({selectedAccounts.size})
+            </button>
+          )}
+          {bulkConfirm && (
+            <span className="bulk-confirm">
+              <span className="confirm-text">Supprimer {selectedAccounts.size} compte(s) ?</span>
+              <button className="btn-danger small" disabled={bulkBusy} onClick={handleBulkDelete}>
+                {bulkBusy ? "…" : "Confirmer"}
+              </button>
+              <button className="btn-ghost small" onClick={() => setBulkConfirm(false)} disabled={bulkBusy}>
+                Annuler
+              </button>
+            </span>
+          )}
+        </div>
+
+        <div className="accounts-list">
+          {accountRows.map((acc) => (
+            <div className="account-row" key={acc.username}>
+              <input
+                type="checkbox"
+                className="account-checkbox"
+                checked={selectedAccounts.has(acc.username)}
+                onChange={() => toggleSelect(acc.username)}
+                disabled={acc.username === currentUsername}
+              />
+              <div className="account-info">
+                <span className="account-name">{acc.playerName}</span>
+                <span className="account-user">@{acc.username}{acc.role === "coach" ? " · staff" : ""}</span>
+              </div>
+
+              {editTarget === acc.username ? (
+                <div className="reset-form">
+                  <input
+                    placeholder="Identifiant"
+                    value={editUsername}
+                    onChange={(e) => setEditUsername(e.target.value)}
+                  />
+                  <select value={editRole} onChange={(e) => setEditRole(e.target.value)}>
+                    <option value="player">Joueur</option>
+                    <option value="coach">Staff</option>
+                  </select>
+                  <button className="btn-primary small" disabled={busy} onClick={() => handleSaveEdit(acc.username)}>
+                    Enregistrer
+                  </button>
+                  <button className="btn-ghost small" onClick={() => setEditTarget(null)}>
+                    Annuler
+                  </button>
+                </div>
+              ) : resetTarget === acc.username ? (
+                <div className="reset-form">
+                  <input
+                    type="password"
+                    placeholder="Nouveau mot de passe"
+                    value={resetValue}
+                    onChange={(e) => setResetValue(e.target.value)}
+                  />
+                  <button className="btn-primary small" disabled={busy} onClick={() => handleReset(acc.username)}>
+                    Valider
+                  </button>
+                  <button className="btn-ghost small" onClick={() => { setResetTarget(null); setResetValue(""); }}>
+                    Annuler
+                  </button>
+                </div>
+              ) : deleteTarget === acc.username ? (
+                <div className="reset-form">
+                  <span className="confirm-text">Supprimer ce compte ?</span>
+                  <button className="btn-danger small" disabled={busy} onClick={() => handleConfirmDelete(acc.username)}>
+                    Confirmer
+                  </button>
+                  <button className="btn-ghost small" onClick={() => setDeleteTarget(null)}>
+                    Annuler
+                  </button>
+                </div>
+              ) : (
+                <div className="account-actions">
+                  <button className="btn-ghost small" onClick={() => startEdit(acc)}>
+                    Modifier
+                  </button>
+                  <button
+                    className="btn-ghost small"
+                    onClick={() => { setResetTarget(acc.username); setResetValue(""); setResetMsg(""); }}
+                  >
+                    Réinitialiser le mot de passe
+                  </button>
+                  <button
+                    className="btn-danger small"
+                    onClick={() => { setDeleteTarget(acc.username); setResetMsg(""); }}
+                    disabled={acc.username === currentUsername}
+                    title={acc.username === currentUsername ? "Tu ne peux pas supprimer ton propre compte ici." : ""}
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {accountRows.length === 0 && <div className="hint">Aucun compte trouvé.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Lineup / composition view (coach only)                              */
+/* ------------------------------------------------------------------ */
+
+function FieldDiagram({ defense, roster }) {
+  function nameFor(playerId) {
+    const p = roster.find((r) => r.id === playerId);
+    if (!p) return "";
+    return p.nom + (p.prenom ? " " + p.prenom[0] + "." : "");
+  }
+
+  return (
+    <svg viewBox="0 0 100 100" className="field-svg">
+      <rect x="0" y="0" width="100" height="100" rx="4" className="field-grass" />
+      <path d="M 50 4 A 60 60 0 0 1 96 66 L 50 66 Z" className="field-outfield" />
+      <path d="M 50 4 A 60 60 0 0 0 4 66 L 50 66 Z" className="field-outfield" />
+      <polygon points="50,92 74,66 50,40 26,66" className="field-infield" />
+      <line x1="50" y1="92" x2="4" y2="66" className="field-line" />
+      <line x1="50" y1="92" x2="96" y2="66" className="field-line" />
+      <circle cx="50" cy="92" r="1.6" className="field-base" />
+      <circle cx="74" cy="66" r="1.6" className="field-base" />
+      <circle cx="50" cy="40" r="1.6" className="field-base" />
+      <circle cx="26" cy="66" r="1.6" className="field-base" />
+
+      {FIELD_POSITIONS.map((fp) => {
+        const playerId = defense[fp.key];
+        return (
+          <g key={fp.key}>
+            <circle cx={fp.x} cy={fp.y} r="6" className={playerId ? "field-marker filled" : "field-marker"} />
+            <text x={fp.x} y={fp.y + 1.2} textAnchor="middle" className="field-marker-label">
+              {fp.short}
+            </text>
+            <text x={fp.x} y={fp.y + 9.5} textAnchor="middle" className="field-marker-name">
+              {playerId ? nameFor(playerId) : "—"}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
+  const [matchId, setMatchId] = useState(state.matches[0].id);
+  const lineup = getLineup(state, matchId);
+
+  const eligible = useMemo(() => {
+    return state.roster
+      .map((p) => ({
+        ...p,
+        status: (state.presence[p.id] || {})[matchId],
+        prefs: [
+          (state.positions[p.id] || {}).pos1,
+          (state.positions[p.id] || {}).pos2,
+          (state.positions[p.id] || {}).pos3,
+        ].filter(Boolean),
+      }))
+      .filter((p) => p.status === "present" || p.status === "reserve")
+      .sort((a, b) => (a.status === b.status ? 0 : a.status === "present" ? -1 : 1));
+  }, [state, matchId]);
+
+  const usedInDefense = Object.values(lineup.defense).filter(Boolean);
+  const duplicateDefense = usedInDefense.length !== new Set(usedInDefense).size;
+
+  function playerLabel(p) {
+    return `${p.prenom} ${p.nom}${p.numero ? " #" + p.numero : ""}`;
+  }
+
+  return (
+    <div>
+      <div className="card">
+        <h2>Composition — choisir le match</h2>
+        <select className="match-select" value={matchId} onChange={(e) => setMatchId(e.target.value)}>
+          {state.matches.map((m) => (
+            <option key={m.id} value={m.id}>{m.label}{m.opponent ? ` vs ${m.opponent}` : ""} — {m.date}</option>
+          ))}
+        </select>
+        <div className="hint">
+          {eligible.length} joueur(s) disponible(s) (présents ou sous réserve) pour ce match.
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Défense — placement sur le terrain</h2>
+        <div className="field-wrap">
+          <FieldDiagram defense={lineup.defense} roster={state.roster} />
+        </div>
+        {duplicateDefense && (
+          <div className="error">Un même joueur est placé à plusieurs postes — vérifie l'affectation.</div>
+        )}
+        <div className="defense-list">
+          {FIELD_POSITIONS.map((fp) => (
+            <label className="field defense-row" key={fp.key}>
+              <span>{fp.key}</span>
+              <select
+                value={lineup.defense[fp.key] || ""}
+                onChange={(e) => onSetDefense(matchId, fp.key, e.target.value)}
+                disabled={busy}
+              >
+                <option value="">—</option>
+                {eligible.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {playerLabel(p)}{p.prefs.includes(fp.key) ? " ★ poste souhaité" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Ordre au bâton</h2>
+        <div className="batting-list">
+          {lineup.batting.map((playerId, idx) => (
+            <label className="field defense-row" key={idx}>
+              <span>{idx + 1}{idx === 0 ? "er" : "e"} au bâton</span>
+              <select
+                value={playerId || ""}
+                onChange={(e) => onSetBatting(matchId, idx, e.target.value)}
+                disabled={busy}
+              >
+                <option value="">—</option>
+                {eligible.map((p) => (
+                  <option key={p.id} value={p.id}>{playerLabel(p)}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Matches admin view (coach only) — edit dates, opponents, scores,   */
+/* and a souvenir photo per match                                     */
+/* ------------------------------------------------------------------ */
+
+function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, busy }) {
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // matchId pending delete confirm
+
+  return (
+    <div>
+      <div className="card">
+        <h2>Matchs de la saison</h2>
+        <div className="hint" style={{ marginBottom: 14 }}>
+          Renseigne le nom, la date, l'équipe rencontrée et le score final de chaque match.
+          Ajoute ou supprime des matchs librement — le nombre de journées et de rencontres n'est
+          pas figé.
+        </div>
+
+        <button className="btn-primary small" onClick={onAddMatch} disabled={busy} style={{ marginBottom: 16 }}>
+          + Ajouter un match
+        </button>
+
+        <div className="matches-admin-list">
+          {matches.map((m) => (
+            <div className="match-admin-card" key={m.id}>
+              <div className="match-admin-header">
+                <label className="field" style={{ flex: 1, marginBottom: 0 }}>
+                  <span>Nom du match</span>
+                  <input
+                    value={m.label}
+                    onChange={(e) => onUpdateField(m.id, "label", e.target.value)}
+                    disabled={busy}
+                    placeholder="ex: J1 - Match 1"
+                  />
+                </label>
+                {deleteConfirm === m.id ? (
+                  <div className="reset-form">
+                    <span className="confirm-text">Supprimer ?</span>
+                    <button className="btn-danger small" disabled={busy} onClick={() => { onDeleteMatch(m.id); setDeleteConfirm(null); }}>
+                      Confirmer
+                    </button>
+                    <button className="btn-ghost small" onClick={() => setDeleteConfirm(null)}>
+                      Annuler
+                    </button>
+                  </div>
+                ) : (
+                  <button className="btn-danger small" onClick={() => setDeleteConfirm(m.id)} disabled={busy}>
+                    Supprimer ce match
+                  </button>
+                )}
+              </div>
+              <div className="row-2">
+                <label className="field">
+                  <span>Date</span>
+                  <input
+                    value={m.date}
+                    onChange={(e) => onUpdateField(m.id, "date", e.target.value)}
+                    disabled={busy}
+                    placeholder="ex: 12 avril"
+                  />
+                </label>
+                <label className="field">
+                  <span>Équipe rencontrée</span>
+                  <input
+                    value={m.opponent}
+                    onChange={(e) => onUpdateField(m.id, "opponent", e.target.value)}
+                    disabled={busy}
+                    placeholder="ex: Compiègne"
+                  />
+                </label>
+              </div>
+              <div className="row-2">
+                <label className="field">
+                  <span>Score Dragons</span>
+                  <input
+                    type="number"
+                    value={m.scoreDragons === null || m.scoreDragons === undefined ? "" : m.scoreDragons}
+                    onChange={(e) => onUpdateField(m.id, "scoreDragons", e.target.value === "" ? null : Number(e.target.value))}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="field">
+                  <span>Score adverse</span>
+                  <input
+                    type="number"
+                    value={m.scoreAdversaire === null || m.scoreAdversaire === undefined ? "" : m.scoreAdversaire}
+                    onChange={(e) => onUpdateField(m.id, "scoreAdversaire", e.target.value === "" ? null : Number(e.target.value))}
+                    disabled={busy}
+                  />
+                </label>
+              </div>
+              {(m.scoreDragons !== null && m.scoreDragons !== undefined) && (m.scoreAdversaire !== null && m.scoreAdversaire !== undefined) && (
+                <div className="match-score-summary">
+                  Dragons {m.scoreDragons} — {m.scoreAdversaire} {m.opponent || "Adversaire"}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Styles                                                               */
+/* ------------------------------------------------------------------ */
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@500;700&display=swap');
+
+.dragons-app {
+  --bg: #0f2818;
+  --panel: #143a24;
+  --panel-alt: #1b4a2e;
+  --line: rgba(212, 175, 55, 0.25);
+  --gold: #d4af37;
+  --cream: #f1ead6;
+  --ok: #3f9e5e;
+  --bad: #c0392b;
+  --warn: #e0a83d;
+  --muted: #9db8a5;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--cream);
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.center-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: var(--cream);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel-alt), var(--panel));
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-emblem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--cream);
+  overflow: hidden;
+  flex: 0 0 auto;
+  border: 2px solid var(--gold);
+}
+.brand-emblem img { width: 100%; height: 100%; object-fit: cover; }
+.brand-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 20px;
+  letter-spacing: 1px;
+  color: var(--gold);
+}
+.brand-sub { font-size: 12px; color: var(--muted); }
+
+.topbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.who { font-size: 13px; color: var(--muted); }
+
+.tab-switch { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.tsw {
+  background: transparent;
+  border: none;
+  color: var(--cream);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+}
+.tsw.active { background: var(--gold); color: #12280f; font-weight: 600; }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn-ghost:hover { border-color: var(--gold); }
+
+.content {
+  flex: 1;
+  padding: 20px;
+  max-width: 880px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.card h2 {
+  font-family: 'Oswald', sans-serif;
+  color: var(--gold);
+  font-size: 17px;
+  letter-spacing: 0.5px;
+  margin: 0 0 14px 0;
+  text-transform: uppercase;
+}
+
+.auth-card { max-width: 420px; margin: 40px auto; }
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+.field input, .field select {
+  background: #0c2015;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+}
+.field input:focus, .field select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 12px; color: var(--muted); }
+
+.btn-primary {
+  width: 100%;
+  background: var(--gold);
+  color: #12280f;
+  border: none;
+  padding: 11px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  margin-top: 6px;
+}
+.btn-primary:disabled { opacity: 0.6; cursor: wait; }
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.error {
+  background: rgba(192, 57, 43, 0.15);
+  border: 1px solid var(--bad);
+  color: #ff9d8f;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.me-grid { margin-bottom: 12px; }
+.me-label { font-size: 12px; color: var(--muted); }
+.me-value { font-family: 'Roboto Mono', monospace; font-size: 16px; color: var(--cream); }
+
+.pos-editor { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 600px) { .pos-editor { grid-template-columns: 1fr; } .row-2 { grid-template-columns: 1fr; } }
+
+.match-list { display: flex; flex-direction: column; gap: 10px; }
+.match-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #0c2015;
+}
+.match-info { min-width: 110px; }
+.match-name { font-family: 'Oswald', sans-serif; color: var(--cream); font-size: 14px; }
+.match-date { font-size: 12px; color: var(--muted); font-family: 'Roboto Mono', monospace; }
+
+.status-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.status-btn {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--cream);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.status-btn.selected.present { background: var(--ok); border-color: var(--ok); color: #06210f; font-weight: 600; }
+.status-btn.selected.absent { background: var(--bad); border-color: var(--bad); color: #2a0805; font-weight: 600; }
+.status-btn.selected.reserve { background: var(--warn); border-color: var(--warn); color: #2a1c02; font-weight: 600; }
+
+.vehicule-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-left: auto; }
+
+.pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0c2015;
+}
+.pill-empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); font-weight: 400; }
+
+.match-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.mtab {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--cream);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mtab.active { background: var(--gold); color: #12280f; border-color: var(--gold); font-weight: 600; }
+
+.counts-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.count-chip { font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.count-chip.present { color: var(--ok); }
+.count-chip.absent { color: var(--bad); }
+.count-chip.reserve { color: var(--warn); }
+.count-chip.unknown { color: var(--muted); }
+
+.search {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0c2015;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  padding: 9px 10px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.grid-table { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.grid-header, .grid-row {
+  display: grid;
+  grid-template-columns: 2fr 2fr 1.2fr;
+  gap: 8px;
+  padding: 9px 12px;
+  align-items: center;
+}
+.grid-header { background: var(--panel-alt); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.grid-row { border-top: 1px solid var(--line); font-size: 13px; }
+.grid-row:nth-child(even) { background: rgba(255,255,255,0.02); }
+.grid-name { font-family: 'Inter', sans-serif; }
+.grid-pos { font-size: 12px; color: var(--muted); }
+.cell-status { background: none; border: none; padding: 0; cursor: pointer; }
+
+.hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+.audit-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.audit-row {
+  display: grid;
+  grid-template-columns: 90px 120px 1fr;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.audit-time { color: var(--muted); font-family: 'Roboto Mono', monospace; }
+.audit-user { color: var(--gold); font-weight: 600; }
+.audit-action { color: var(--cream); }
+
+.match-select {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0c2015;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.field-wrap { max-width: 340px; margin: 0 auto 16px auto; }
+.field-svg { width: 100%; height: auto; display: block; }
+.field-grass { fill: #1e5c34; }
+.field-outfield { fill: #23663a; }
+.field-infield { fill: #b98a55; stroke: var(--cream); stroke-width: 0.4; }
+.field-line { stroke: var(--cream); stroke-width: 0.6; }
+.field-base { fill: var(--cream); }
+.field-marker { fill: rgba(12,32,21,0.85); stroke: var(--gold); stroke-width: 0.6; }
+.field-marker.filled { fill: var(--gold); stroke: var(--cream); }
+.field-marker-label { font-family: 'Oswald', sans-serif; font-size: 4.2px; fill: var(--cream); font-weight: 600; }
+.field-marker.filled + .field-marker-label { fill: #12280f; }
+.field-marker-name { font-family: 'Inter', sans-serif; font-size: 3.4px; fill: var(--cream); }
+
+.defense-list { display: flex; flex-direction: column; gap: 8px; }
+.defense-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 0; }
+.defense-row span { flex: 0 0 130px; color: var(--cream); font-size: 13px; }
+.defense-row select { flex: 1; }
+
+.batting-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.batting-row { display: flex; align-items: center; gap: 8px; }
+.batting-num {
+  font-family: 'Roboto Mono', monospace;
+  color: var(--gold);
+  font-weight: 700;
+  width: 22px;
+  text-align: center;
+}
+.batting-row select { flex: 1; background: #0c2015; border: 1px solid var(--line); color: var(--cream); padding: 8px; border-radius: 8px; }
+
+.btn-primary.small { width: auto; padding: 8px 14px; font-size: 13px; }
+.btn-ghost.small { padding: 6px 10px; font-size: 12px; }
+
+.forgot-hint {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 14px;
+  line-height: 1.5;
+}
+
+.ok-msg {
+  background: rgba(63, 158, 94, 0.15);
+  border: 1px solid var(--ok);
+  color: #b6e6c5;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.accounts-list { display: flex; flex-direction: column; gap: 10px; }
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #0c2015;
+}
+.account-checkbox { flex: 0 0 auto; width: 16px; height: 16px; }
+.bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.bulk-confirm { display: flex; align-items: center; gap: 8px; }
+.account-info { display: flex; flex-direction: column; }
+.account-name { font-size: 13px; color: var(--cream); }
+.account-user { font-size: 11px; color: var(--muted); font-family: 'Roboto Mono', monospace; }
+.account-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--bad);
+  color: #ff9d8f;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-danger:hover { background: rgba(192, 57, 43, 0.15); }
+.btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.confirm-text { font-size: 12px; color: var(--muted); }
+
+.reset-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.reset-form input {
+  background: #143a24;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.matches-admin-list { display: flex; flex-direction: column; gap: 16px; }
+.match-admin-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: #0c2015;
+}
+.match-admin-title {
+  font-family: 'Oswald', sans-serif;
+  color: var(--gold);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+.match-admin-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.match-score-summary {
+  margin-top: 10px;
+  font-family: 'Roboto Mono', monospace;
+  color: var(--cream);
+  font-size: 14px;
+  text-align: center;
+  background: var(--panel-alt);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.poste-summary { margin-bottom: 12px; }
+.poste-summary-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.poste-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.poste-chip {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.poste-chip strong { font-family: 'Roboto Mono', monospace; }
+.poste-chip.poste-zero { border-color: var(--bad); color: #ff9d8f; background: rgba(192, 57, 43, 0.12); }
+.poste-chip.poste-low { border-color: var(--warn); color: var(--warn); background: rgba(224, 168, 61, 0.1); }
+.poste-chip.poste-ok { border-color: var(--ok); color: #8fe3ac; background: rgba(63, 158, 94, 0.1); }
+
+.foot {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 14px;
+  border-top: 1px solid var(--line);
+}
+`;
