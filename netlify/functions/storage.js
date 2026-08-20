@@ -1,7 +1,18 @@
 import { getStore } from "@netlify/blobs";
 
+function getBlobStore() {
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.BLOBS_TOKEN;
+  if (siteID && token) {
+    return getStore({ name: "dragons-app", siteID, token });
+  }
+  // Fallback: relies on automatic context injection (works on some setups,
+  // but not all — hence the manual siteID/token path above).
+  return getStore("dragons-app");
+}
+
 export async function handler(event) {
-  const store = getStore("dragons-app");
+  const store = getBlobStore();
 
   if (event.httpMethod === "GET") {
     const key = event.queryStringParameters && event.queryStringParameters.key;

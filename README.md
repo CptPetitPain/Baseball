@@ -3,6 +3,24 @@
 Version prête à héberger sur Netlify, avec sauvegarde des données via **Netlify Blobs**
 (stockage clé-valeur gratuit et intégré à Netlify — pas besoin de créer de compte ailleurs).
 
+## Configuration obligatoire : jeton d'accès pour Netlify Blobs
+
+Sur certaines configurations de compte Netlify, l'injection automatique des identifiants
+Netlify Blobs ne fonctionne pas (erreur `MissingBlobsEnvironmentError`). Pour éviter ce
+problème, la fonction utilise un jeton fourni manuellement via une variable d'environnement.
+
+1. Va sur [app.netlify.com/user/applications](https://app.netlify.com/user/applications#personal-access-tokens)
+   (menu de ton compte → **User settings → Applications → Personal access tokens**).
+2. Clique sur **"New access token"**, donne-lui un nom (ex: `dragons-blobs`), génère-le, et
+   copie-le immédiatement (il ne sera plus affiché ensuite).
+3. Va sur ton site → **Site configuration → Environment variables → Add a variable**.
+4. Crée une variable nommée exactement `BLOBS_TOKEN`, colle le jeton comme valeur, sauvegarde.
+5. Redéploie le site (**Deploys → Trigger deploy → Deploy site**) pour que la nouvelle
+   variable soit prise en compte.
+
+Sans cette étape, l'appli affichera "Impossible de charger les données" et la fonction
+`storage` plantera avec l'erreur `MissingBlobsEnvironmentError`.
+
 ## Déploiement (méthode la plus simple — sans ligne de commande)
 
 1. Va sur [app.netlify.com](https://app.netlify.com) et crée un compte gratuit si besoin.
