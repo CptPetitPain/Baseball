@@ -17,16 +17,18 @@ function emptyInnings() {
   return { dragons: Array(9).fill(null), adversaire: Array(9).fill(null) };
 }
 
+const CURRENT_SEASON = String(new Date().getFullYear());
+
 const MATCHES_SEED = [
-  { id: "m1", label: "Match 1", date: "12 avril", opponent: "", innings: emptyInnings() },
-  { id: "m2", label: "Match 2", date: "19 avril", opponent: "", innings: emptyInnings() },
-  { id: "m3", label: "Match 3", date: "26 avril", opponent: "", innings: emptyInnings() },
-  { id: "m4", label: "Match 4", date: "3 mai", opponent: "", innings: emptyInnings() },
-  { id: "m5", label: "Match 5", date: "10 mai", opponent: "", innings: emptyInnings() },
-  { id: "m6", label: "Match 6", date: "17 mai", opponent: "", innings: emptyInnings() },
-  { id: "m7", label: "Match 7", date: "31 mai", opponent: "", innings: emptyInnings() },
-  { id: "m8", label: "Match 8", date: "7 juin", opponent: "", innings: emptyInnings() },
-  { id: "m9", label: "Match 9", date: "14 juin", opponent: "", innings: emptyInnings() },
+  { id: "m1", label: "Match 1", date: "12 avril", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m2", label: "Match 2", date: "19 avril", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m3", label: "Match 3", date: "26 avril", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m4", label: "Match 4", date: "3 mai", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m5", label: "Match 5", date: "10 mai", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m6", label: "Match 6", date: "17 mai", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m7", label: "Match 7", date: "31 mai", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m8", label: "Match 8", date: "7 juin", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m9", label: "Match 9", date: "14 juin", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
 ];
 
 function getInnings(match) {
@@ -35,6 +37,36 @@ function getInnings(match) {
 
 function inningsTotal(arr) {
   return arr.reduce((sum, v) => sum + (typeof v === "number" ? v : 0), 0);
+}
+
+/* Returns "V" (victoire), "D" (défaite), "N" (nul), or null if the match
+   hasn't been scored yet. */
+function matchResult(m) {
+  const innings = m.innings || emptyInnings();
+  const played = innings.dragons.some((v) => typeof v === "number") || innings.adversaire.some((v) => typeof v === "number");
+  if (!played) return null;
+  const dTotal = inningsTotal(innings.dragons);
+  const aTotal = inningsTotal(innings.adversaire);
+  if (dTotal > aTotal) return "V";
+  if (dTotal < aTotal) return "D";
+  return "N";
+}
+
+const FR_MONTHS = [
+  "janvier", "février", "mars", "avril", "mai", "juin",
+  "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+];
+
+function parseFrenchDateSortValue(dateStr) {
+  if (!dateStr) return null;
+  const normalized = dateStr.toLowerCase().trim();
+  const match = normalized.match(/(\d{1,2})\s*(?:er)?\s+([a-zéûôî]+)/);
+  if (!match) return null;
+  const day = parseInt(match[1], 10);
+  if (Number.isNaN(day)) return null;
+  const monthIdx = FR_MONTHS.findIndex((m) => normalized.includes(m) || m.startsWith(match[2]));
+  if (monthIdx === -1) return null;
+  return monthIdx * 100 + day;
 }
 
 const STATUTS = [
@@ -347,6 +379,10 @@ export default function DragonsApp() {
     await callMutation("deleteMatch", { matchId });
   }
 
+  async function reorderMatches(orderedIds) {
+    await callMutation("reorderMatches", { orderedIds });
+  }
+
   async function setInning(matchId, team, inningIndex, value) {
     await callMutation("setInning", { matchId, team, inningIndex, value });
   }
@@ -473,6 +509,12 @@ export default function DragonsApp() {
                   Classement
                 </button>
                 <button
+                  className={screen === "history" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("history")}
+                >
+                  Historique
+                </button>
+                <button
                   className={screen === "player" ? "tsw active" : "tsw"}
                   onClick={() => setScreen("player")}
                 >
@@ -504,6 +546,12 @@ export default function DragonsApp() {
                   onClick={() => setScreen("standings")}
                 >
                   Classement
+                </button>
+                <button
+                  className={screen === "history" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("history")}
+                >
+                  Historique
                 </button>
               </div>
             )}
@@ -575,6 +623,10 @@ export default function DragonsApp() {
           />
         )}
 
+        {session && screen === "history" && (
+          <HistoryView matches={state.matches} lineups={state.lineups} roster={state.roster} />
+        )}
+
         {session && screen === "coach" && isStaffRole(session.role) && (
           <CoachView
             state={state}
@@ -608,6 +660,7 @@ export default function DragonsApp() {
             onUpdateField={(matchId, field, value) => updateMatchField(matchId, field, value)}
             onAddMatch={() => addMatch()}
             onDeleteMatch={(matchId) => deleteMatch(matchId)}
+            onReorderMatches={(orderedIds) => reorderMatches(orderedIds)}
             busy={busy}
           />
         )}
@@ -870,15 +923,17 @@ function PlayerView({ player, matches, presence, positions, onSetPresence, onSet
                     </button>
                   ))}
                 </div>
-                <label className="vehicule-toggle">
-                  <input
-                    type="checkbox"
-                    checked={vehicule === "Oui"}
-                    onChange={(e) => onSetVehicule(m.id, e.target.checked ? "Oui" : "Non")}
-                    disabled={busy}
-                  />
-                  <span>Véhicule</span>
-                </label>
+                {m.location === "exterieur" && (
+                  <label className="vehicule-toggle">
+                    <input
+                      type="checkbox"
+                      checked={vehicule === "Oui"}
+                      onChange={(e) => onSetVehicule(m.id, e.target.checked ? "Oui" : "Non")}
+                      disabled={busy}
+                    />
+                    <span>Véhicule</span>
+                  </label>
+                )}
               </div>
             );
           })}
@@ -1551,8 +1606,28 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
 /* and a souvenir photo per match                                     */
 /* ------------------------------------------------------------------ */
 
-function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, busy }) {
+function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReorderMatches, busy }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null); // matchId pending delete confirm
+
+  function moveMatch(index, direction) {
+    const target = index + direction;
+    if (target < 0 || target >= matches.length) return;
+    const ids = matches.map((m) => m.id);
+    const [moved] = ids.splice(index, 1);
+    ids.splice(target, 0, moved);
+    onReorderMatches(ids);
+  }
+
+  function sortByDate() {
+    const withValue = matches.map((m, i) => ({ id: m.id, i, v: parseFrenchDateSortValue(m.date) }));
+    withValue.sort((a, b) => {
+      if (a.v === null && b.v === null) return a.i - b.i;
+      if (a.v === null) return 1;
+      if (b.v === null) return -1;
+      return a.v - b.v;
+    });
+    onReorderMatches(withValue.map((w) => w.id));
+  }
 
   return (
     <div>
@@ -1561,16 +1636,40 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, busy }
         <div className="hint" style={{ marginBottom: 14 }}>
           Renseigne le nom, la date, l'équipe rencontrée et le score final de chaque match.
           Ajoute ou supprime des matchs librement — le nombre de journées et de rencontres n'est
-          pas figé.
+          pas figé. Utilise les flèches ↑↓ pour réordonner un match précis, ou trie
+          automatiquement par date.
         </div>
 
-        <button className="btn-primary small" onClick={onAddMatch} disabled={busy} style={{ marginBottom: 16 }}>
-          + Ajouter un match
-        </button>
+        <div className="matches-toolbar">
+          <button className="btn-primary small" onClick={onAddMatch} disabled={busy}>
+            + Ajouter un match
+          </button>
+          <button className="btn-ghost small" onClick={sortByDate} disabled={busy || matches.length < 2}>
+            Trier par date
+          </button>
+        </div>
 
         <div className="matches-admin-list">
-          {matches.map((m) => (
+          {matches.map((m, index) => (
             <div className="match-admin-card" key={m.id}>
+              <div className="match-order-controls">
+                <button
+                  className="order-btn"
+                  onClick={() => moveMatch(index, -1)}
+                  disabled={busy || index === 0}
+                  title="Monter"
+                >
+                  ↑
+                </button>
+                <button
+                  className="order-btn"
+                  onClick={() => moveMatch(index, 1)}
+                  disabled={busy || index === matches.length - 1}
+                  title="Descendre"
+                >
+                  ↓
+                </button>
+              </div>
               <div className="match-admin-header">
                 <label className="field" style={{ flex: 1, marginBottom: 0 }}>
                   <span>Nom du match</span>
@@ -1597,6 +1696,27 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, busy }
                   </button>
                 )}
               </div>
+              <div className="location-toggle">
+                <button
+                  className={"loc-btn" + (m.location !== "exterieur" ? " active" : "")}
+                  onClick={() => onUpdateField(m.id, "location", "domicile")}
+                  disabled={busy}
+                >
+                  🏠 Domicile
+                </button>
+                <button
+                  className={"loc-btn" + (m.location === "exterieur" ? " active" : "")}
+                  onClick={() => onUpdateField(m.id, "location", "exterieur")}
+                  disabled={busy}
+                >
+                  🚌 Extérieur
+                </button>
+              </div>
+              {m.location === "exterieur" && (
+                <div className="hint" style={{ marginBottom: 10 }}>
+                  Match à l'extérieur — le champ "Véhicule" apparaîtra pour les joueurs (covoiturage).
+                </div>
+              )}
               <div className="row-2">
                 <label className="field">
                   <span>Date</span>
@@ -1608,15 +1728,24 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, busy }
                   />
                 </label>
                 <label className="field">
-                  <span>Équipe rencontrée</span>
+                  <span>Saison</span>
                   <DebouncedInput
-                    value={m.opponent}
-                    onCommit={(v) => onUpdateField(m.id, "opponent", v)}
+                    value={m.season || ""}
+                    onCommit={(v) => onUpdateField(m.id, "season", v)}
                     disabled={busy}
-                    placeholder="ex: Compiègne"
+                    placeholder="ex: 2026"
                   />
                 </label>
               </div>
+              <label className="field">
+                <span>Équipe rencontrée</span>
+                <DebouncedInput
+                  value={m.opponent}
+                  onCommit={(v) => onUpdateField(m.id, "opponent", v)}
+                  disabled={busy}
+                  placeholder="ex: Compiègne"
+                />
+              </label>
               {(() => {
                 const innings = getInnings(m);
                 const dTotal = inningsTotal(innings.dragons);
@@ -1815,6 +1944,169 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
           + Ajouter une équipe
         </button>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* History view — past matches across seasons, with a simple trend     */
+/* ------------------------------------------------------------------ */
+
+function HistoryView({ matches, lineups, roster }) {
+  const seasons = useMemo(() => {
+    const set = new Set(matches.map((m) => m.season || "—"));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [matches]);
+
+  const [seasonFilter, setSeasonFilter] = useState("all");
+  const [expandedId, setExpandedId] = useState(null);
+
+  const filtered = useMemo(() => {
+    return matches.filter((m) => seasonFilter === "all" || (m.season || "—") === seasonFilter);
+  }, [matches, seasonFilter]);
+
+  const rows = useMemo(() => {
+    return filtered.map((m) => {
+      const result = matchResult(m);
+      const dTotal = inningsTotal((m.innings || emptyInnings()).dragons);
+      const aTotal = inningsTotal((m.innings || emptyInnings()).adversaire);
+      return { ...m, result, dTotal, aTotal };
+    });
+  }, [filtered]);
+
+  const stats = useMemo(() => {
+    const played = rows.filter((r) => r.result);
+    const v = played.filter((r) => r.result === "V").length;
+    const d = played.filter((r) => r.result === "D").length;
+    const n = played.filter((r) => r.result === "N").length;
+    const pct = played.length > 0 ? v / played.length : 0;
+    return { v, d, n, played: played.length, pct };
+  }, [rows]);
+
+  const resultLabel = { V: "Victoire", D: "Défaite", N: "Match nul" };
+  const resultClass = { V: "hist-v", D: "hist-d", N: "hist-n" };
+
+  function playerName(playerId) {
+    const p = roster.find((r) => r.id === playerId);
+    return p ? `${p.prenom} ${p.nom}` : null;
+  }
+
+  return (
+    <div className="card">
+      <h2>Historique des matchs</h2>
+
+      <select className="match-select" value={seasonFilter} onChange={(e) => setSeasonFilter(e.target.value)}>
+        <option value="all">Toutes les saisons</option>
+        {seasons.map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+
+      <div className="hist-summary">
+        <div className="hist-stat">
+          <div className="hist-stat-num">{stats.v}</div>
+          <div className="hist-stat-label">Victoires</div>
+        </div>
+        <div className="hist-stat">
+          <div className="hist-stat-num">{stats.d}</div>
+          <div className="hist-stat-label">Défaites</div>
+        </div>
+        <div className="hist-stat">
+          <div className="hist-stat-num">{stats.n}</div>
+          <div className="hist-stat-label">Nuls</div>
+        </div>
+        <div className="hist-stat">
+          <div className="hist-stat-num">{stats.played > 0 ? Math.round(stats.pct * 100) + "%" : "—"}</div>
+          <div className="hist-stat-label">Taux de victoire</div>
+        </div>
+      </div>
+
+      {rows.some((r) => r.result) && (
+        <div className="hist-trend">
+          {rows.filter((r) => r.result).map((r) => (
+            <span key={r.id} className={"hist-chip " + resultClass[r.result]} title={`${r.label} — ${resultLabel[r.result]}`}>
+              {r.result}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="hist-list">
+        {rows.length === 0 && <div className="hint">Aucun match pour cette saison.</div>}
+        {rows.map((r) => {
+          const lineup = getLineup({ lineups }, r.id);
+          const defenseEntries = FIELD_POSITIONS.filter((fp) => lineup.defense[fp.key]);
+          const battingEntries = lineup.batting.filter(Boolean);
+          const hasComposition = defenseEntries.length > 0 || battingEntries.length > 0;
+          const expanded = expandedId === r.id;
+          return (
+            <div className="hist-row-wrap" key={r.id}>
+              <div className="hist-row">
+                <div className="hist-row-main">
+                  <div className="hist-row-title">
+                    {r.label}{r.opponent ? ` vs ${r.opponent}` : ""}
+                    <span className="hist-row-season"> · {r.season || "—"}</span>
+                  </div>
+                  <div className="hist-row-date">{r.date}</div>
+                </div>
+                <div className="hist-row-right">
+                  {r.result ? (
+                    <>
+                      <span className="hist-row-score">{r.dTotal} — {r.aTotal}</span>
+                      <span className="pill" style={{
+                        background: r.result === "V" ? "var(--ok)" : r.result === "D" ? "var(--bad)" : "var(--warn)",
+                      }}>
+                        {resultLabel[r.result]}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="pill pill-empty">Pas encore joué</span>
+                  )}
+                  <button
+                    className="btn-ghost small"
+                    onClick={() => setExpandedId(expanded ? null : r.id)}
+                  >
+                    {expanded ? "Masquer" : "Composition"}
+                  </button>
+                </div>
+              </div>
+              {expanded && (
+                <div className="hist-comp">
+                  {!hasComposition && <div className="hint">Composition non renseignée pour ce match.</div>}
+                  {defenseEntries.length > 0 && (
+                    <div className="hist-comp-block">
+                      <div className="hist-comp-title">Défense</div>
+                      <div className="hist-comp-grid">
+                        {defenseEntries.map((fp) => (
+                          <div className="hist-comp-item" key={fp.key}>
+                            <span className="hist-comp-poste">{fp.key}</span>
+                            <span>{playerName(lineup.defense[fp.key]) || "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {battingEntries.length > 0 && (
+                    <div className="hist-comp-block">
+                      <div className="hist-comp-title">Ordre au bâton</div>
+                      <div className="hist-comp-batting">
+                        {lineup.batting.map((playerId, idx) =>
+                          playerId ? (
+                            <div className="hist-comp-item" key={idx}>
+                              <span className="hist-comp-poste">{idx + 1}</span>
+                              <span>{playerName(playerId) || "—"}</span>
+                            </div>
+                          ) : null
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -2294,6 +2586,34 @@ const CSS = `
   margin-bottom: 10px;
   text-transform: uppercase;
 }
+.location-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
+.loc-btn {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.loc-btn.active { background: var(--gold); color: #12280f; border-color: var(--gold); font-weight: 600; }
+
+.matches-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+
+.match-order-controls { display: flex; gap: 6px; margin-bottom: 10px; }
+.order-btn {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--cream);
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.order-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.order-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
 .match-admin-header {
   display: flex;
   align-items: flex-end;
@@ -2437,6 +2757,90 @@ const CSS = `
   padding: 6px 8px;
   border-radius: 6px;
   font-size: 13px;
+}
+
+.hist-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 14px 0;
+}
+.hist-stat {
+  background: #0c2015;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+}
+.hist-stat-num { font-family: 'Roboto Mono', monospace; font-size: 20px; color: var(--gold); font-weight: 700; }
+.hist-stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+.hist-trend { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; }
+.hist-chip {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0c2015;
+  cursor: default;
+}
+.hist-chip.hist-v { background: var(--ok); }
+.hist-chip.hist-d { background: var(--bad); }
+.hist-chip.hist-n { background: var(--warn); }
+
+.hist-list { display: flex; flex-direction: column; gap: 8px; }
+.hist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #0c2015;
+}
+.hist-row-title { font-size: 13px; color: var(--cream); }
+.hist-row-season { color: var(--muted); font-size: 12px; }
+.hist-row-date { font-size: 11px; color: var(--muted); font-family: 'Roboto Mono', monospace; }
+.hist-row-right { display: flex; align-items: center; gap: 8px; }
+.hist-row-score { font-family: 'Roboto Mono', monospace; color: var(--gold); font-weight: 700; }
+
+.hist-row-wrap { display: flex; flex-direction: column; }
+.hist-comp {
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 12px;
+  background: #0a1a10;
+  margin-top: -1px;
+}
+.hist-comp-block { margin-bottom: 12px; }
+.hist-comp-block:last-child { margin-bottom: 0; }
+.hist-comp-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.hist-comp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
+.hist-comp-batting { display: flex; flex-direction: column; gap: 4px; }
+.hist-comp-item {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--cream);
+}
+.hist-comp-poste {
+  color: var(--gold);
+  font-family: 'Roboto Mono', monospace;
+  min-width: 22px;
+  flex-shrink: 0;
 }
 
 .foot {

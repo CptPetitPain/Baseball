@@ -90,16 +90,18 @@ function emptyInnings() {
   return { dragons: Array(9).fill(null), adversaire: Array(9).fill(null) };
 }
 
+const CURRENT_SEASON = String(new Date().getFullYear());
+
 const MATCHES_SEED = [
-  { id: "m1", label: "Match 1", date: "12 avril", opponent: "", innings: emptyInnings() },
-  { id: "m2", label: "Match 2", date: "19 avril", opponent: "", innings: emptyInnings() },
-  { id: "m3", label: "Match 3", date: "26 avril", opponent: "", innings: emptyInnings() },
-  { id: "m4", label: "Match 4", date: "3 mai", opponent: "", innings: emptyInnings() },
-  { id: "m5", label: "Match 5", date: "10 mai", opponent: "", innings: emptyInnings() },
-  { id: "m6", label: "Match 6", date: "17 mai", opponent: "", innings: emptyInnings() },
-  { id: "m7", label: "Match 7", date: "31 mai", opponent: "", innings: emptyInnings() },
-  { id: "m8", label: "Match 8", date: "7 juin", opponent: "", innings: emptyInnings() },
-  { id: "m9", label: "Match 9", date: "14 juin", opponent: "", innings: emptyInnings() },
+  { id: "m1", label: "Match 1", date: "12 avril", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m2", label: "Match 2", date: "19 avril", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m3", label: "Match 3", date: "26 avril", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m4", label: "Match 4", date: "3 mai", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m5", label: "Match 5", date: "10 mai", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m6", label: "Match 6", date: "17 mai", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m7", label: "Match 7", date: "31 mai", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m8", label: "Match 8", date: "7 juin", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
+  { id: "m9", label: "Match 9", date: "14 juin", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() },
 ];
 
 function defaultState() {
@@ -126,6 +128,8 @@ function normalizeState(s) {
   const matches = (s.matches && s.matches.length ? s.matches : base.matches).map((m) => ({
     ...m,
     innings: m.innings || emptyInnings(),
+    location: m.location || "exterieur",
+    season: m.season || CURRENT_SEASON,
   }));
   return {
     roster: s.roster || base.roster,
@@ -409,18 +413,18 @@ async function applyMutation(store, state, session, action, body) {
     case "updateMatchField": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { matchId, field, value } = body;
-      if (!["label", "date", "opponent"].includes(field)) return { error: "Champ invalide." };
+      if (!["label", "date", "opponent", "location", "season"].includes(field)) return { error: "Champ invalide." };
       const matches = s.matches.map((m) => (m.id === matchId ? { ...m, [field]: value } : m));
       s = { ...s, matches };
       const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
-      const fieldLabels = { label: "le nom", date: "la date", opponent: "l'équipe adverse" };
+      const fieldLabels = { label: "le nom", date: "la date", opponent: "l'équipe adverse", location: "domicile/extérieur", season: "la saison" };
       s = logAction(s, actingUser, `a modifié ${fieldLabels[field] || field} de ${matchLabel}`);
       break;
     }
     case "addMatch": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const id = "m-" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
-      const newMatch = { id, label: `Match ${s.matches.length + 1}`, date: "", opponent: "", innings: emptyInnings() };
+      const newMatch = { id, label: `Match ${s.matches.length + 1}`, date: "", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() };
       s = { ...s, matches: [...s.matches, newMatch] };
       s = logAction(s, actingUser, `a ajouté "${newMatch.label}"`);
       break;
@@ -439,6 +443,26 @@ async function applyMutation(store, state, session, action, body) {
       });
       s = { ...s, matches, lineups, presence };
       s = logAction(s, actingUser, `a supprimé "${removed ? removed.label : matchId}"`);
+      break;
+    }
+    case "reorderMatches": {
+      if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
+      const { orderedIds } = body;
+      if (!Array.isArray(orderedIds)) return { error: "Ordre invalide." };
+      const byId = {};
+      s.matches.forEach((m) => { byId[m.id] = m; });
+      const newMatches = [];
+      orderedIds.forEach((id) => {
+        if (byId[id]) {
+          newMatches.push(byId[id]);
+          delete byId[id];
+        }
+      });
+      s.matches.forEach((m) => {
+        if (byId[m.id]) newMatches.push(m);
+      });
+      s = { ...s, matches: newMatches };
+      s = logAction(s, actingUser, "a réorganisé l'ordre des matchs");
       break;
     }
     case "setInning": {
