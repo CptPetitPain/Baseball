@@ -13,17 +13,29 @@ const POSTES = [
   "Champ extérieur", "Utility", "Manager",
 ];
 
+function emptyInnings() {
+  return { dragons: Array(9).fill(null), adversaire: Array(9).fill(null) };
+}
+
 const MATCHES_SEED = [
-  { id: "m1", label: "Match 1", date: "12 avril", opponent: "", scoreDragons: null, scoreAdversaire: null },
-  { id: "m2", label: "Match 2", date: "19 avril", opponent: "", scoreDragons: null, scoreAdversaire: null },
-  { id: "m3", label: "Match 3", date: "26 avril", opponent: "", scoreDragons: null, scoreAdversaire: null },
-  { id: "m4", label: "Match 4", date: "3 mai", opponent: "", scoreDragons: null, scoreAdversaire: null },
-  { id: "m5", label: "Match 5", date: "10 mai", opponent: "", scoreDragons: null, scoreAdversaire: null },
-  { id: "m6", label: "Match 6", date: "17 mai", opponent: "", scoreDragons: null, scoreAdversaire: null },
-  { id: "m7", label: "Match 7", date: "31 mai", opponent: "", scoreDragons: null, scoreAdversaire: null },
-  { id: "m8", label: "Match 8", date: "7 juin", opponent: "", scoreDragons: null, scoreAdversaire: null },
-  { id: "m9", label: "Match 9", date: "14 juin", opponent: "", scoreDragons: null, scoreAdversaire: null },
+  { id: "m1", label: "Match 1", date: "12 avril", opponent: "", innings: emptyInnings() },
+  { id: "m2", label: "Match 2", date: "19 avril", opponent: "", innings: emptyInnings() },
+  { id: "m3", label: "Match 3", date: "26 avril", opponent: "", innings: emptyInnings() },
+  { id: "m4", label: "Match 4", date: "3 mai", opponent: "", innings: emptyInnings() },
+  { id: "m5", label: "Match 5", date: "10 mai", opponent: "", innings: emptyInnings() },
+  { id: "m6", label: "Match 6", date: "17 mai", opponent: "", innings: emptyInnings() },
+  { id: "m7", label: "Match 7", date: "31 mai", opponent: "", innings: emptyInnings() },
+  { id: "m8", label: "Match 8", date: "7 juin", opponent: "", innings: emptyInnings() },
+  { id: "m9", label: "Match 9", date: "14 juin", opponent: "", innings: emptyInnings() },
 ];
+
+function getInnings(match) {
+  return match.innings || emptyInnings();
+}
+
+function inningsTotal(arr) {
+  return arr.reduce((sum, v) => sum + (typeof v === "number" ? v : 0), 0);
+}
 
 const STATUTS = [
   { value: "present", label: "Présent" },
@@ -141,13 +153,17 @@ function defaultState() {
 
 function normalizeState(s) {
   const base = defaultState();
+  const matches = (s.matches && s.matches.length ? s.matches : base.matches).map((m) => ({
+    ...m,
+    innings: m.innings || emptyInnings(),
+  }));
   return {
     roster: s.roster || base.roster,
     accounts: s.accounts || {},
     presence: s.presence || {},
     positions: s.positions || {},
     lineups: s.lineups || {},
-    matches: s.matches && s.matches.length ? s.matches : base.matches,
+    matches,
     auditLog: s.auditLog || [],
   };
 }
@@ -523,10 +539,24 @@ export default function DragonsApp() {
         label: "le nom",
         date: "la date",
         opponent: "l'équipe adverse",
-        scoreDragons: "le score Dragons",
-        scoreAdversaire: "le score adverse",
       };
       return logAction(next, actingUser, `a modifié ${fieldLabels[field] || field} de ${matchLabel}`);
+    });
+  }
+
+  async function setInning(matchId, team, inningIndex, value, actingUser) {
+    await withMutation((s) => {
+      const matches = s.matches.map((m) => {
+        if (m.id !== matchId) return m;
+        const innings = getInnings(m);
+        const teamArr = [...innings[team]];
+        teamArr[inningIndex] = value;
+        return { ...m, innings: { ...innings, [team]: teamArr } };
+      });
+      const next = { ...s, matches };
+      const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
+      const teamLabel = team === "dragons" ? "Dragons" : "adverse";
+      return logAction(next, actingUser, `a modifié la manche ${inningIndex + 1} (${teamLabel}) de ${matchLabel}`);
     });
   }
 
@@ -538,12 +568,64 @@ export default function DragonsApp() {
         label: `Match ${s.matches.length + 1}`,
         date: "",
         opponent: "",
-        scoreDragons: null,
-        scoreAdversaire: null,
+        innings: emptyInnings(),
       };
       const next = { ...s, matches: [...s.matches, newMatch] };
       return logAction(next, actingUser, `a ajouté "${newMatch.label}"`);
     });
+  }
+
+  async function deletePlayer(playerId, actingUser) {
+    setBusy(true);
+    setError("");
+    try {
+      const fresh = await loadState();
+      const removed = fresh.roster.find((p) => p.id === playerId);
+      const linkedUsername = Object.entries(fresh.accounts).find(([, acc]) => acc.playerId === playerId)?.[0];
+
+      const roster = fresh.roster.filter((p) => p.id !== playerId);
+
+      const presence = { ...fresh.presence };
+      delete presence[playerId];
+
+      const positions = { ...fresh.positions };
+      delete positions[playerId];
+
+      const lineups = {};
+      Object.entries(fresh.lineups).forEach(([matchId, lineup]) => {
+        const defense = { ...lineup.defense };
+        Object.keys(defense).forEach((poste) => {
+          if (defense[poste] === playerId) delete defense[poste];
+        });
+        const batting = (lineup.batting || []).map((pid) => (pid === playerId ? "" : pid));
+        lineups[matchId] = { ...lineup, defense, batting };
+      });
+
+      const accounts = { ...fresh.accounts };
+      if (linkedUsername) delete accounts[linkedUsername];
+
+      let next = { ...fresh, roster, presence, positions, lineups, accounts };
+      const targetLabel = removed ? `${removed.prenom} ${removed.nom}` : playerId;
+      next = logAction(
+        next,
+        actingUser,
+        `a supprimé le joueur "${targetLabel}"${linkedUsername ? ` (et son compte "${linkedUsername}")` : ""}`
+      );
+
+      await saveState(next);
+      setState(next);
+
+      if (session && session.playerId === playerId) {
+        setSession(null);
+        setScreen("login");
+      }
+      return true;
+    } catch (e) {
+      setError("Une erreur est survenue. Réessaie.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function deleteMatch(matchId, actingUser) {
@@ -723,7 +805,7 @@ export default function DragonsApp() {
         </div>
         {session && (
           <div className="topbar-right">
-            {session.role === "coach" && (
+            {session.role === "coach" ? (
               <div className="tab-switch">
                 <button
                   className={screen === "composition" ? "tsw active" : "tsw"}
@@ -744,10 +826,37 @@ export default function DragonsApp() {
                   Matchs
                 </button>
                 <button
+                  className={screen === "results" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("results")}
+                >
+                  Résultats
+                </button>
+                <button
                   className={screen === "player" ? "tsw active" : "tsw"}
                   onClick={() => setScreen("player")}
                 >
                   Ma présence
+                </button>
+              </div>
+            ) : (
+              <div className="tab-switch">
+                <button
+                  className={screen === "player" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("player")}
+                >
+                  Ma présence
+                </button>
+                <button
+                  className={screen === "roster" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("roster")}
+                >
+                  Présences
+                </button>
+                <button
+                  className={screen === "results" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("results")}
+                >
+                  Résultats
                 </button>
               </div>
             )}
@@ -796,6 +905,18 @@ export default function DragonsApp() {
           />
         )}
 
+        {session && screen === "roster" && session.role !== "coach" && (
+          <PresenceRosterView state={state} />
+        )}
+
+        {session && screen === "results" && (
+          <ResultsView
+            matches={state.matches}
+            canEdit={session.role === "coach"}
+            onSetInning={(matchId, team, idx, value) => setInning(matchId, team, idx, value, session.username)}
+          />
+        )}
+
         {session && screen === "coach" && session.role === "coach" && (
           <CoachView
             state={state}
@@ -805,7 +926,9 @@ export default function DragonsApp() {
             onDeleteAccount={(username) => doDeleteAccount(username, session.username)}
             onSetAccountRole={(username, role) => doSetAccountRole(username, role, session.username)}
             onRenameAccount={(oldU, newU) => doRenameAccount(oldU, newU, session.username)}
+            onDeletePlayer={(playerId) => deletePlayer(playerId, session.username)}
             currentUsername={session.username}
+            currentPlayerId={session.playerId}
             busy={busy}
           />
         )}
@@ -1086,7 +1209,9 @@ function CoachView({
   onDeleteAccount,
   onSetAccountRole,
   onRenameAccount,
+  onDeletePlayer,
   currentUsername,
+  currentPlayerId,
   busy,
 }) {
   const [search, setSearch] = useState("");
@@ -1099,6 +1224,11 @@ function CoachView({
   const [editRole, setEditRole] = useState("player");
   const [deleteTarget, setDeleteTarget] = useState(null); // username pending delete confirm
   const [accountSearch, setAccountSearch] = useState("");
+  const [selectedPlayers, setSelectedPlayers] = useState(() => new Set());
+  const [playerDeleteConfirm, setPlayerDeleteConfirm] = useState(null); // playerId pending delete
+  const [playerBulkConfirm, setPlayerBulkConfirm] = useState(false);
+  const [playerBulkBusy, setPlayerBulkBusy] = useState(false);
+  const [playerMsg, setPlayerMsg] = useState("");
   const [selectedAccounts, setSelectedAccounts] = useState(() => new Set());
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -1139,6 +1269,43 @@ function CoachView({
     const idx = order.indexOf(current);
     const next = order[(idx === -1 ? 0 : idx + 1) % order.length];
     onSetPresence(playerId, activeMatch, next);
+  }
+
+  function togglePlayerSelect(playerId) {
+    setSelectedPlayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+  }
+
+  function togglePlayerSelectAll(rows) {
+    setSelectedPlayers((prev) => {
+      const allSelected = rows.length > 0 && rows.every((p) => prev.has(p.id) || p.id === currentPlayerId);
+      if (allSelected) return new Set();
+      return new Set(rows.map((p) => p.id).filter((id) => id !== currentPlayerId));
+    });
+  }
+
+  async function handleDeletePlayer(playerId) {
+    setPlayerMsg("");
+    await onDeletePlayer(playerId);
+    setPlayerDeleteConfirm(null);
+    setPlayerMsg("Joueur supprimé.");
+  }
+
+  async function handlePlayerBulkDelete() {
+    setPlayerBulkBusy(true);
+    setPlayerMsg("");
+    const ids = Array.from(selectedPlayers);
+    for (const id of ids) {
+      await onDeletePlayer(id);
+    }
+    setPlayerBulkBusy(false);
+    setPlayerBulkConfirm(false);
+    setSelectedPlayers(new Set());
+    setPlayerMsg(`${ids.length} joueur(s) supprimé(s).`);
   }
 
   async function handleReset(username) {
@@ -1264,17 +1431,56 @@ function CoachView({
           onChange={(e) => setSearch(e.target.value)}
         />
 
+        <div className="bulk-bar">
+          <label className="checkbox-row" style={{ marginBottom: 0 }}>
+            <input
+              type="checkbox"
+              checked={players.length > 0 && players.every((p) => selectedPlayers.has(p.id) || p.id === currentPlayerId)}
+              onChange={() => togglePlayerSelectAll(players)}
+            />
+            <span>Tout sélectionner ({players.length})</span>
+          </label>
+
+          {selectedPlayers.size > 0 && !playerBulkConfirm && (
+            <button className="btn-danger small" onClick={() => setPlayerBulkConfirm(true)}>
+              Supprimer la sélection ({selectedPlayers.size})
+            </button>
+          )}
+          {playerBulkConfirm && (
+            <span className="bulk-confirm">
+              <span className="confirm-text">Supprimer {selectedPlayers.size} joueur(s) ? Comptes liés compris.</span>
+              <button className="btn-danger small" disabled={playerBulkBusy} onClick={handlePlayerBulkDelete}>
+                {playerBulkBusy ? "…" : "Confirmer"}
+              </button>
+              <button className="btn-ghost small" onClick={() => setPlayerBulkConfirm(false)} disabled={playerBulkBusy}>
+                Annuler
+              </button>
+            </span>
+          )}
+        </div>
+        {playerMsg && <div className="ok-msg">{playerMsg}</div>}
+
         <div className="grid-table">
-          <div className="grid-header">
+          <div className="grid-header grid-header-with-actions">
+            <div></div>
             <div>Joueur</div>
             <div>Postes</div>
             <div>Statut — {state.matches.find((m) => m.id === activeMatch)?.label}</div>
+            <div>Actions</div>
           </div>
           {players.map((p) => {
             const pos = state.positions[p.id] || {};
             const status = (state.presence[p.id] || {})[activeMatch];
             return (
-              <div className="grid-row" key={p.id}>
+              <div className="grid-row grid-row-with-actions" key={p.id}>
+                <div>
+                  <input
+                    type="checkbox"
+                    checked={selectedPlayers.has(p.id)}
+                    onChange={() => togglePlayerSelect(p.id)}
+                    disabled={p.id === currentPlayerId}
+                  />
+                </div>
                 <div className="grid-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
                 <div className="grid-pos">
                   {[pos.pos1, pos.pos2, pos.pos3].filter(Boolean).join(" · ") || "—"}
@@ -1284,11 +1490,32 @@ function CoachView({
                     <StatusPill value={status} />
                   </button>
                 </div>
+                <div>
+                  {playerDeleteConfirm === p.id ? (
+                    <div className="reset-form">
+                      <button className="btn-danger small" disabled={busy} onClick={() => handleDeletePlayer(p.id)}>
+                        Confirmer
+                      </button>
+                      <button className="btn-ghost small" onClick={() => setPlayerDeleteConfirm(null)}>
+                        Annuler
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="btn-danger small"
+                      onClick={() => { setPlayerDeleteConfirm(p.id); setPlayerMsg(""); }}
+                      disabled={p.id === currentPlayerId}
+                      title={p.id === currentPlayerId ? "Tu ne peux pas te supprimer toi-même." : ""}
+                    >
+                      Supprimer
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
-        <div className="hint">Clique sur un statut pour le faire tourner (Présent → Absent → Sous réserve → vide).</div>
+        <div className="hint">Clique sur un statut pour le faire tourner (Présent → Absent → Sous réserve → vide). Supprimer un joueur retire aussi ses présences, ses postes, sa place dans les compositions, et son compte s'il en a un.</div>
       </div>
 
       <div className="card">
@@ -1638,34 +1865,144 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, busy }
                   />
                 </label>
               </div>
-              <div className="row-2">
-                <label className="field">
-                  <span>Score Dragons</span>
-                  <input
-                    type="number"
-                    value={m.scoreDragons === null || m.scoreDragons === undefined ? "" : m.scoreDragons}
-                    onChange={(e) => onUpdateField(m.id, "scoreDragons", e.target.value === "" ? null : Number(e.target.value))}
-                    disabled={busy}
-                  />
-                </label>
-                <label className="field">
-                  <span>Score adverse</span>
-                  <input
-                    type="number"
-                    value={m.scoreAdversaire === null || m.scoreAdversaire === undefined ? "" : m.scoreAdversaire}
-                    onChange={(e) => onUpdateField(m.id, "scoreAdversaire", e.target.value === "" ? null : Number(e.target.value))}
-                    disabled={busy}
-                  />
-                </label>
-              </div>
-              {(m.scoreDragons !== null && m.scoreDragons !== undefined) && (m.scoreAdversaire !== null && m.scoreAdversaire !== undefined) && (
-                <div className="match-score-summary">
-                  Dragons {m.scoreDragons} — {m.scoreAdversaire} {m.opponent || "Adversaire"}
-                </div>
-              )}
+              {(() => {
+                const innings = getInnings(m);
+                const dTotal = inningsTotal(innings.dragons);
+                const aTotal = inningsTotal(innings.adversaire);
+                const played = innings.dragons.some((v) => typeof v === "number") || innings.adversaire.some((v) => typeof v === "number");
+                return played ? (
+                  <div className="match-score-summary">
+                    Dragons {dTotal} — {aTotal} {m.opponent || "Adversaire"}
+                    <span className="hint" style={{ display: "block", marginTop: 4 }}>
+                      Détail manche par manche dans l'onglet Résultats
+                    </span>
+                  </div>
+                ) : null;
+              })()}
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Results view (innings scoresheet) — coach can edit, players view   */
+/* ------------------------------------------------------------------ */
+
+function ResultsView({ matches, canEdit, onSetInning }) {
+  const [matchId, setMatchId] = useState(matches[0]?.id);
+  const match = matches.find((m) => m.id === matchId) || matches[0];
+  if (!match) {
+    return (
+      <div className="card">
+        <h2>Résultats</h2>
+        <div className="hint">Aucun match pour l'instant.</div>
+      </div>
+    );
+  }
+  const innings = getInnings(match);
+  const dTotal = inningsTotal(innings.dragons);
+  const aTotal = inningsTotal(innings.adversaire);
+
+  function renderRow(teamKey, teamLabel, total) {
+    return (
+      <div className="innings-row">
+        <div className="innings-team-label">{teamLabel}</div>
+        {innings[teamKey].map((val, i) => (
+          <div className="innings-cell" key={i}>
+            {canEdit ? (
+              <input
+                type="number"
+                value={val === null || val === undefined ? "" : val}
+                onChange={(e) => onSetInning(match.id, teamKey, i, e.target.value === "" ? null : Number(e.target.value))}
+              />
+            ) : (
+              <span>{val === null || val === undefined ? "—" : val}</span>
+            )}
+          </div>
+        ))}
+        <div className="innings-total">{total}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card">
+      <h2>Résultats — feuille de score</h2>
+      <select className="match-select" value={match.id} onChange={(e) => setMatchId(e.target.value)}>
+        {matches.map((m) => (
+          <option key={m.id} value={m.id}>{m.label}{m.opponent ? ` vs ${m.opponent}` : ""}</option>
+        ))}
+      </select>
+      {!canEdit && <div className="hint" style={{ marginBottom: 12 }}>Vue en lecture seule — seul le coaching staff peut saisir les scores.</div>}
+
+      <div className="innings-table">
+        <div className="innings-row innings-header">
+          <div className="innings-team-label"></div>
+          {Array.from({ length: 9 }, (_, i) => (
+            <div className="innings-cell innings-header-cell" key={i}>{i + 1}</div>
+          ))}
+          <div className="innings-total innings-header-cell">Total</div>
+        </div>
+        {renderRow("dragons", "Dragons", dTotal)}
+        {renderRow("adversaire", match.opponent || "Adversaire", aTotal)}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Read-only presence roster view (for players)                        */
+/* ------------------------------------------------------------------ */
+
+function PresenceRosterView({ state }) {
+  const [matchId, setMatchId] = useState(state.matches[0]?.id);
+  const match = state.matches.find((m) => m.id === matchId) || state.matches[0];
+
+  const rows = useMemo(() => {
+    return state.roster
+      .map((p) => ({
+        ...p,
+        status: match ? (state.presence[p.id] || {})[match.id] : undefined,
+      }))
+      .sort((a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom));
+  }, [state, match]);
+
+  if (!match) {
+    return (
+      <div className="card">
+        <h2>Présences de l'équipe</h2>
+        <div className="hint">Aucun match pour l'instant.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card">
+      <h2>Présences de l'équipe</h2>
+      <select className="match-select" value={match.id} onChange={(e) => setMatchId(e.target.value)}>
+        {state.matches.map((m) => (
+          <option key={m.id} value={m.id}>{m.label}{m.opponent ? ` vs ${m.opponent}` : ""} — {m.date}</option>
+        ))}
+      </select>
+      <div className="grid-table">
+        <div className="grid-header">
+          <div>Joueur</div>
+          <div>Postes</div>
+          <div>Statut</div>
+        </div>
+        {rows.map((p) => {
+          const pos = state.positions[p.id] || {};
+          return (
+            <div className="grid-row" key={p.id}>
+              <div className="grid-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
+              <div className="grid-pos">{[pos.pos1, pos.pos2, pos.pos3].filter(Boolean).join(" · ") || "—"}</div>
+              <div><StatusPill value={p.status} /></div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1935,6 +2272,9 @@ const CSS = `
 .grid-row:nth-child(even) { background: rgba(255,255,255,0.02); }
 .grid-name { font-family: 'Inter', sans-serif; }
 .grid-pos { font-size: 12px; color: var(--muted); }
+.grid-header-with-actions, .grid-row-with-actions {
+  grid-template-columns: 24px 2fr 2fr 1.2fr auto;
+}
 .cell-status { background: none; border: none; padding: 0; cursor: pointer; }
 
 .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
@@ -2114,6 +2454,59 @@ const CSS = `
 .poste-chip.poste-zero { border-color: var(--bad); color: #ff9d8f; background: rgba(192, 57, 43, 0.12); }
 .poste-chip.poste-low { border-color: var(--warn); color: var(--warn); background: rgba(224, 168, 61, 0.1); }
 .poste-chip.poste-ok { border-color: var(--ok); color: #8fe3ac; background: rgba(63, 158, 94, 0.1); }
+
+.innings-table {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  overflow-x: auto;
+}
+.innings-row {
+  display: grid;
+  grid-template-columns: 90px repeat(9, minmax(32px, 1fr)) 56px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+}
+.innings-row:first-child { border-top: none; }
+.innings-header { background: var(--panel-alt); }
+.innings-header-cell {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  text-align: center;
+}
+.innings-team-label {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--cream);
+  font-family: 'Oswald', sans-serif;
+}
+.innings-cell {
+  text-align: center;
+  padding: 4px;
+  border-left: 1px solid var(--line);
+}
+.innings-cell input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0c2015;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  text-align: center;
+  padding: 6px 2px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.innings-cell span { font-family: 'Roboto Mono', monospace; color: var(--cream); font-size: 13px; }
+.innings-total {
+  text-align: center;
+  padding: 8px 4px;
+  border-left: 1px solid var(--gold);
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 700;
+  color: var(--gold);
+}
 
 .foot {
   text-align: center;
