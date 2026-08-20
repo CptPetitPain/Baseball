@@ -1,6 +1,6 @@
-const { getStore } = require("@netlify/blobs");
+import { getStore } from "@netlify/blobs";
 
-exports.handler = async (event) => {
+export async function handler(event) {
   const store = getStore("dragons-app");
 
   if (event.httpMethod === "GET") {
@@ -35,4 +35,4 @@ exports.handler = async (event) => {
   }
 
   return { statusCode: 405, body: "Method not allowed" };
-};
+}
