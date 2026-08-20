@@ -1448,11 +1448,30 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
       .sort((a, b) => (a.status === b.status ? 0 : a.status === "present" ? -1 : 1));
   }, [state, matchId]);
 
-  const usedInDefense = Object.values(lineup.defense).filter(Boolean);
-  const duplicateDefense = usedInDefense.length !== new Set(usedInDefense).size;
-
   function playerLabel(p) {
     return `${p.prenom} ${p.nom}${p.numero ? " #" + p.numero : ""}`;
+  }
+
+  async function handleDefenseChange(posteKey, playerId) {
+    if (playerId) {
+      const existingSlot = Object.entries(lineup.defense).find(
+        ([slot, pid]) => pid === playerId && slot !== posteKey
+      );
+      if (existingSlot) {
+        await onSetDefense(matchId, existingSlot[0], "");
+      }
+    }
+    await onSetDefense(matchId, posteKey, playerId);
+  }
+
+  async function handleBattingChange(index, playerId) {
+    if (playerId) {
+      const existingIndex = lineup.batting.findIndex((pid, i) => pid === playerId && i !== index);
+      if (existingIndex !== -1) {
+        await onSetBatting(matchId, existingIndex, "");
+      }
+    }
+    await onSetBatting(matchId, index, playerId);
   }
 
   return (
@@ -1474,16 +1493,17 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
         <div className="field-wrap">
           <FieldDiagram defense={lineup.defense} roster={state.roster} />
         </div>
-        {duplicateDefense && (
-          <div className="error">Un même joueur est placé à plusieurs postes — vérifie l'affectation.</div>
-        )}
+        <div className="hint" style={{ marginBottom: 10 }}>
+          Choisir un joueur déjà placé ailleurs le déplace automatiquement — impossible de le
+          dupliquer à deux postes.
+        </div>
         <div className="defense-list">
           {FIELD_POSITIONS.map((fp) => (
             <label className="field defense-row" key={fp.key}>
               <span>{fp.key}</span>
               <select
                 value={lineup.defense[fp.key] || ""}
-                onChange={(e) => onSetDefense(matchId, fp.key, e.target.value)}
+                onChange={(e) => handleDefenseChange(fp.key, e.target.value)}
                 disabled={busy}
               >
                 <option value="">—</option>
@@ -1500,13 +1520,17 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
 
       <div className="card">
         <h2>Ordre au bâton</h2>
+        <div className="hint" style={{ marginBottom: 10 }}>
+          Même principe : un joueur déjà positionné dans l'ordre au bâton est déplacé, jamais
+          dupliqué.
+        </div>
         <div className="batting-list">
           {lineup.batting.map((playerId, idx) => (
             <label className="field defense-row" key={idx}>
               <span>{idx + 1}{idx === 0 ? "er" : "e"} au bâton</span>
               <select
                 value={playerId || ""}
-                onChange={(e) => onSetBatting(matchId, idx, e.target.value)}
+                onChange={(e) => handleBattingChange(idx, e.target.value)}
                 disabled={busy}
               >
                 <option value="">—</option>
