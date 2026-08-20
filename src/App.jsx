@@ -2056,8 +2056,8 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
         </div>
         {rows.map((team, idx) => (
           <div className="standings-row" key={team.id}>
-            <div className="standings-rank">{idx + 1}</div>
-            <div>
+            <div className="standings-rank sr-rank">{idx + 1}</div>
+            <div className="sr-team">
               {canEdit ? (
                 <>
                   <DebouncedInput
@@ -2079,7 +2079,8 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
               )}
             </div>
             {["w", "l", "t"].map((field) => (
-              <div key={field}>
+              <div key={field} className={"sr-" + field}>
+                <span className="sr-mobile-label">{field.toUpperCase()}</span>
                 {canEdit ? (
                   <DebouncedInput
                     type="number"
@@ -2093,10 +2094,16 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
                 )}
               </div>
             ))}
-            <div>{team.pct.toFixed(3).replace(/^0/, "")}</div>
-            <div>{idx === 0 ? "—" : team.gb.toFixed(1)}</div>
+            <div className="sr-pct">
+              <span className="sr-mobile-label">PCT</span>
+              {team.pct.toFixed(3).replace(/^0/, "")}
+            </div>
+            <div className="sr-gb">
+              <span className="sr-mobile-label">GB</span>
+              {idx === 0 ? "—" : team.gb.toFixed(1)}
+            </div>
             {canEdit && (
-              <div>
+              <div className="sr-actions">
                 {deleteConfirm === team.id ? (
                   <div className="reset-form">
                     <button className="btn-danger small" disabled={busy} onClick={() => { onDeleteTeam(team.id); setDeleteConfirm(null); }}>
@@ -2975,6 +2982,41 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   border-radius: 6px;
   color: var(--cream);
 }
+
+.sr-mobile-label { display: none; }
+
+@media (max-width: 600px) {
+  .standings-header { display: none; }
+  .standings-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas:
+      "team team team"
+      "w l t"
+      "pct pct gb"
+      "actions actions actions";
+    gap: 8px;
+    padding: 12px;
+  }
+  .sr-rank { display: none; }
+  .sr-team { grid-area: team; }
+  .sr-w { grid-area: w; }
+  .sr-l { grid-area: l; }
+  .sr-t { grid-area: t; }
+  .sr-pct { grid-area: pct; }
+  .sr-gb { grid-area: gb; }
+  .sr-actions { grid-area: actions; }
+  .sr-mobile-label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+  .standings-num-input { text-align: left; }
+}
+
 
 .hist-summary {
   display: grid;
