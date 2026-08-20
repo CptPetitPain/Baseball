@@ -39,8 +39,12 @@ function inningsTotal(arr) {
   return arr.reduce((sum, v) => sum + (typeof v === "number" ? v : 0), 0);
 }
 
-/* Returns "V" (victoire), "D" (défaite), "N" (nul), or null if the match
-   hasn't been scored yet. */
+/* Returns "V" (victoire), "D" (défaite), or null if the match hasn't
+   been scored yet or is still tied (extra innings needed). */
+/* Au baseball, il n'y a pas de match nul : la partie continue en manches
+   supplémentaires jusqu'à ce qu'un vainqueur se dégage. Si les totaux sont
+   encore égaux, on considère donc le match comme non résolu (pas encore
+   terminé) plutôt que "nul". */
 function matchResult(m) {
   const innings = m.innings || emptyInnings();
   const played = innings.dragons.some((v) => typeof v === "number") || innings.adversaire.some((v) => typeof v === "number");
@@ -49,7 +53,7 @@ function matchResult(m) {
   const aTotal = inningsTotal(innings.adversaire);
   if (dTotal > aTotal) return "V";
   if (dTotal < aTotal) return "D";
-  return "N";
+  return null;
 }
 
 const FR_MONTHS = [
@@ -141,9 +145,9 @@ const FIELD_POSITIONS = [
   { key: "Lanceur", short: "P", x: 50, y: 66 },
   { key: "Catcher", short: "C", x: 50, y: 90 },
   { key: "Première base", short: "1B", x: 70, y: 60 },
-  { key: "Deuxième base", short: "2B", x: 59, y: 45 },
+  { key: "Deuxième base", short: "2B", x: 63, y: 43 },
   { key: "Troisième base", short: "3B", x: 30, y: 60 },
-  { key: "Arrêt-court", short: "SS", x: 41, y: 45 },
+  { key: "Arrêt-court", short: "SS", x: 37, y: 43 },
   { key: "Champ gauche", short: "LF", x: 20, y: 26 },
   { key: "Champ centre", short: "CC", x: 50, y: 12 },
   { key: "Champ droit", short: "RF", x: 80, y: 26 },
@@ -1995,13 +1999,12 @@ function HistoryView({ matches, lineups, roster }) {
     const played = rows.filter((r) => r.result);
     const v = played.filter((r) => r.result === "V").length;
     const d = played.filter((r) => r.result === "D").length;
-    const n = played.filter((r) => r.result === "N").length;
     const pct = played.length > 0 ? v / played.length : 0;
-    return { v, d, n, played: played.length, pct };
+    return { v, d, played: played.length, pct };
   }, [rows]);
 
-  const resultLabel = { V: "Victoire", D: "Défaite", N: "Match nul" };
-  const resultClass = { V: "hist-v", D: "hist-d", N: "hist-n" };
+  const resultLabel = { V: "Victoire", D: "Défaite" };
+  const resultClass = { V: "hist-v", D: "hist-d" };
 
   function playerName(playerId) {
     const p = roster.find((r) => r.id === playerId);
@@ -2027,10 +2030,6 @@ function HistoryView({ matches, lineups, roster }) {
         <div className="hist-stat">
           <div className="hist-stat-num">{stats.d}</div>
           <div className="hist-stat-label">Défaites</div>
-        </div>
-        <div className="hist-stat">
-          <div className="hist-stat-num">{stats.n}</div>
-          <div className="hist-stat-label">Nuls</div>
         </div>
         <div className="hist-stat">
           <div className="hist-stat-num">{stats.played > 0 ? Math.round(stats.pct * 100) + "%" : "—"}</div>
@@ -2489,7 +2488,7 @@ const CSS = `
   margin-bottom: 8px;
 }
 
-.field-wrap { max-width: 520px; margin: 0 auto 16px auto; }
+.field-wrap { max-width: 400px; margin: 0 auto 16px auto; }
 .field-svg { width: 100%; height: auto; display: block; }
 .field-grass { fill: #1e5c34; }
 .field-outfield { fill: #23663a; }
@@ -2773,7 +2772,7 @@ const CSS = `
 
 .hist-summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin: 14px 0;
 }
@@ -2802,7 +2801,6 @@ const CSS = `
 }
 .hist-chip.hist-v { background: var(--ok); }
 .hist-chip.hist-d { background: var(--bad); }
-.hist-chip.hist-n { background: var(--warn); }
 
 .hist-list { display: flex; flex-direction: column; gap: 8px; }
 .hist-row {
@@ -2840,7 +2838,7 @@ const CSS = `
   color: var(--muted);
   margin-bottom: 6px;
 }
-.field-wrap-history { max-width: 300px; margin: 0 auto; }
+.field-wrap-history { max-width: 400px; margin: 0 auto; }
 .hist-comp-batting { display: flex; flex-direction: column; gap: 4px; }
 .hist-comp-item {
   display: flex;
