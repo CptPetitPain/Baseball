@@ -143,7 +143,7 @@ function isStaffRole(role) {
    in a 0-100 viewBox shared with the SVG diamond drawing. */
 const FIELD_POSITIONS = [
   { key: "Lanceur", short: "P", x: 50, y: 66 },
-  { key: "Catcher", short: "C", x: 50, y: 90 },
+  { key: "Catcher", short: "C", x: 50, y: 88 },
   { key: "Première base", short: "1B", x: 70, y: 60 },
   { key: "Deuxième base", short: "2B", x: 63, y: 43 },
   { key: "Troisième base", short: "3B", x: 30, y: 60 },
@@ -864,6 +864,10 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
 /* ------------------------------------------------------------------ */
 
 function PlayerView({ player, matches, presence, positions, onSetPresence, onSetVehicule, onSetPosition, onSetNumero, busy }) {
+  const upcomingMatches = matches.filter(
+    (m) => (m.season || CURRENT_SEASON) === CURRENT_SEASON && matchResult(m) === null
+  );
+
   return (
     <div>
       <div className="card">
@@ -905,8 +909,16 @@ function PlayerView({ player, matches, presence, positions, onSetPresence, onSet
 
       <div className="card">
         <h2>Mes présences</h2>
+        <div className="hint" style={{ marginBottom: 12 }}>
+          Seuls les matchs de la saison en cours qui n'ont pas encore de résultat s'affichent
+          ici — une fois un match joué et son score saisi, il n'apparaît plus (plus de saisie à
+          faire dessus).
+        </div>
         <div className="match-list">
-          {matches.map((m) => {
+          {upcomingMatches.length === 0 && (
+            <div className="hint">Tous les matchs de cette saison ont déjà été joués — rien à renseigner pour le moment.</div>
+          )}
+          {upcomingMatches.map((m) => {
             const status = presence[m.id];
             const vehicule = presence[m.id + "-vehicule"];
             return (
@@ -1458,8 +1470,8 @@ function FieldDiagram({ defense, roster }) {
   }
 
   return (
-    <svg viewBox="0 0 100 100" className="field-svg">
-      <rect x="0" y="0" width="100" height="100" rx="4" className="field-grass" />
+    <svg viewBox="0 0 100 106" className="field-svg">
+      <rect x="0" y="0" width="100" height="106" rx="4" className="field-grass" />
       <path d="M 50 4 A 60 60 0 0 1 96 66 L 50 66 Z" className="field-outfield" />
       <path d="M 50 4 A 60 60 0 0 0 4 66 L 50 66 Z" className="field-outfield" />
       <polygon points="50,92 74,66 50,40 26,66" className="field-infield" />
@@ -1478,7 +1490,7 @@ function FieldDiagram({ defense, roster }) {
             <text x={fp.x} y={fp.y + 1.4} textAnchor="middle" className="field-marker-label">
               {fp.short}
             </text>
-            <text x={fp.x} y={fp.y + 10.5} textAnchor="middle" className="field-marker-name">
+            <text x={fp.x} y={fp.y + 9} textAnchor="middle" className="field-marker-name">
               {playerId ? nameFor(playerId) : "—"}
             </text>
           </g>
@@ -1629,25 +1641,56 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
 
 function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReorderMatches, busy }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null); // matchId pending delete confirm
+  const [seasonFilter, setSeasonFilter] = useState(null);
+
+  const seasons = useMemo(() => {
+    const set = new Set(matches.map((m) => m.season || "—"));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [matches]);
+
+  const effectiveFilter = seasonFilter ?? (seasons[0] || "all");
+
+  const filteredMatches = useMemo(
+    () => matches.filter((m) => effectiveFilter === "all" || (m.season || "—") === effectiveFilter),
+    [matches, effectiveFilter]
+  );
+
+  function mergeReorder(newFilteredIds) {
+    let ptr = 0;
+    const merged = matches.map((m) => {
+      if (effectiveFilter === "all" || (m.season || "—") === effectiveFilter) {
+        const id = newFilteredIds[ptr];
+        ptr++;
+        return id;
+      }
+      return m.id;
+    });
+    onReorderMatches(merged);
+  }
 
   function moveMatch(index, direction) {
     const target = index + direction;
-    if (target < 0 || target >= matches.length) return;
-    const ids = matches.map((m) => m.id);
+    if (target < 0 || target >= filteredMatches.length) return;
+    const ids = filteredMatches.map((m) => m.id);
     const [moved] = ids.splice(index, 1);
     ids.splice(target, 0, moved);
-    onReorderMatches(ids);
+    mergeReorder(ids);
   }
 
   function sortByDate() {
-    const withValue = matches.map((m, i) => ({ id: m.id, i, v: parseFrenchDateSortValue(m.date) }));
+    const withValue = filteredMatches.map((m, i) => ({ id: m.id, i, v: parseFrenchDateSortValue(m.date) }));
     withValue.sort((a, b) => {
       if (a.v === null && b.v === null) return a.i - b.i;
       if (a.v === null) return 1;
       if (b.v === null) return -1;
       return a.v - b.v;
     });
-    onReorderMatches(withValue.map((w) => w.id));
+    mergeReorder(withValue.map((w) => w.id));
+  }
+
+  function handleAddMatch() {
+    onAddMatch();
+    if (effectiveFilter !== CURRENT_SEASON) setSeasonFilter(CURRENT_SEASON);
   }
 
   return (
@@ -1661,17 +1704,28 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
           automatiquement par date.
         </div>
 
+        <select
+          className="match-select"
+          value={effectiveFilter}
+          onChange={(e) => setSeasonFilter(e.target.value)}
+        >
+          {seasons.map((s) => (
+            <option key={s} value={s}>Saison {s}</option>
+          ))}
+          <option value="all">Toutes les saisons</option>
+        </select>
+
         <div className="matches-toolbar">
-          <button className="btn-primary small" onClick={onAddMatch} disabled={busy}>
+          <button className="btn-primary small" onClick={handleAddMatch} disabled={busy}>
             + Ajouter un match
           </button>
-          <button className="btn-ghost small" onClick={sortByDate} disabled={busy || matches.length < 2}>
+          <button className="btn-ghost small" onClick={sortByDate} disabled={busy || filteredMatches.length < 2}>
             Trier par date
           </button>
         </div>
 
         <div className="matches-admin-list">
-          {matches.map((m, index) => (
+          {filteredMatches.map((m, index) => (
             <div className="match-admin-card" key={m.id}>
               <div className="match-order-controls">
                 <button
@@ -1685,7 +1739,7 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
                 <button
                   className="order-btn"
                   onClick={() => moveMatch(index, 1)}
-                  disabled={busy || index === matches.length - 1}
+                  disabled={busy || index === filteredMatches.length - 1}
                   title="Descendre"
                 >
                   ↓
@@ -1861,9 +1915,22 @@ function ResultsView({ matches, canEdit, onSetInning }) {
 
 function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteTeam, busy }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [seasonFilter, setSeasonFilter] = useState(null);
+
+  const seasons = useMemo(() => {
+    const set = new Set((standings || []).map((t) => t.season || "—"));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [standings]);
+
+  const effectiveFilter = seasonFilter ?? (seasons[0] || "all");
+
+  const filteredStandings = useMemo(
+    () => (standings || []).filter((t) => effectiveFilter === "all" || (t.season || "—") === effectiveFilter),
+    [standings, effectiveFilter]
+  );
 
   const rows = useMemo(() => {
-    const withStats = (standings || []).map((t) => {
+    const withStats = filteredStandings.map((t) => {
       const w = Number(t.w) || 0;
       const l = Number(t.l) || 0;
       const tt = Number(t.t) || 0;
@@ -1877,7 +1944,12 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
       const gb = leader ? (leader.w - team.w + (team.l - leader.l)) / 2 : 0;
       return { ...team, gb };
     });
-  }, [standings]);
+  }, [filteredStandings]);
+
+  function handleAddTeam() {
+    onAddTeam();
+    if (effectiveFilter !== CURRENT_SEASON) setSeasonFilter(CURRENT_SEASON);
+  }
 
   return (
     <div className="card">
@@ -1889,6 +1961,17 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
           le nombre de matchs d'écart (GB) se calculent automatiquement.
         </div>
       )}
+
+      <select
+        className="match-select"
+        value={effectiveFilter}
+        onChange={(e) => setSeasonFilter(e.target.value)}
+      >
+        {seasons.map((s) => (
+          <option key={s} value={s}>Saison {s}</option>
+        ))}
+        <option value="all">Toutes les saisons</option>
+      </select>
 
       <div className="standings-table">
         <div className="standings-row standings-header">
@@ -1961,7 +2044,7 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
       </div>
 
       {canEdit && (
-        <button className="btn-primary small" onClick={onAddTeam} disabled={busy} style={{ marginTop: 14 }}>
+        <button className="btn-primary small" onClick={handleAddTeam} disabled={busy} style={{ marginTop: 14 }}>
           + Ajouter une équipe
         </button>
       )}

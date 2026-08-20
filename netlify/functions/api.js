@@ -138,7 +138,7 @@ function normalizeState(s) {
     positions: s.positions || {},
     lineups: s.lineups || {},
     matches,
-    standings: s.standings || [],
+    standings: (s.standings || []).map((t) => ({ ...t, season: t.season || CURRENT_SEASON })),
     auditLog: s.auditLog || [],
   };
 }
@@ -485,7 +485,7 @@ async function applyMutation(store, state, session, action, body) {
     case "addTeam": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const id = "t-" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
-      const newTeam = { id, team: "Nouvelle équipe", w: 0, l: 0, t: 0 };
+      const newTeam = { id, team: "Nouvelle équipe", w: 0, l: 0, t: 0, season: CURRENT_SEASON };
       s = { ...s, standings: [...(s.standings || []), newTeam] };
       s = logAction(s, actingUser, "a ajouté une équipe au classement");
       break;
@@ -493,7 +493,7 @@ async function applyMutation(store, state, session, action, body) {
     case "updateTeamField": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { teamId, field, value } = body;
-      if (!["team", "w", "l", "t"].includes(field)) return { error: "Champ invalide." };
+      if (!["team", "w", "l", "t", "season"].includes(field)) return { error: "Champ invalide." };
       const standings = (s.standings || []).map((t) => (t.id === teamId ? { ...t, [field]: value } : t));
       s = { ...s, standings };
       const team = standings.find((t) => t.id === teamId);
