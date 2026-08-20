@@ -87,7 +87,7 @@ const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
 }));
 
 function emptyInnings() {
-  return { dragons: Array(9).fill(null), adversaire: Array(9).fill(null) };
+  return { dragons: Array(7).fill(null), adversaire: Array(7).fill(null) };
 }
 
 const CURRENT_SEASON = String(new Date().getFullYear());
@@ -130,6 +130,7 @@ function normalizeState(s) {
     innings: m.innings || emptyInnings(),
     location: m.location || "exterieur",
     season: m.season || CURRENT_SEASON,
+    cancelled: Boolean(m.cancelled),
   }));
   return {
     roster: s.roster || base.roster,
@@ -413,11 +414,11 @@ async function applyMutation(store, state, session, action, body) {
     case "updateMatchField": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { matchId, field, value } = body;
-      if (!["label", "date", "opponent", "location", "season"].includes(field)) return { error: "Champ invalide." };
+      if (!["label", "date", "opponent", "location", "season", "cancelled"].includes(field)) return { error: "Champ invalide." };
       const matches = s.matches.map((m) => (m.id === matchId ? { ...m, [field]: value } : m));
       s = { ...s, matches };
       const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
-      const fieldLabels = { label: "le nom", date: "la date", opponent: "l'équipe adverse", location: "domicile/extérieur", season: "la saison" };
+      const fieldLabels = { label: "le nom", date: "la date", opponent: "l'équipe adverse", location: "domicile/extérieur", season: "la saison", cancelled: "le statut annulé" };
       s = logAction(s, actingUser, `a modifié ${fieldLabels[field] || field} de ${matchLabel}`);
       break;
     }

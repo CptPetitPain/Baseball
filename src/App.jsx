@@ -14,7 +14,7 @@ const POSTES = [
 ];
 
 function emptyInnings() {
-  return { dragons: Array(9).fill(null), adversaire: Array(9).fill(null) };
+  return { dragons: Array(7).fill(null), adversaire: Array(7).fill(null) };
 }
 
 const CURRENT_SEASON = String(new Date().getFullYear());
@@ -874,7 +874,7 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
 
 function PlayerView({ player, matches, presence, positions, onSetPresence, onSetVehicule, onSetPosition, onSetNumero, busy }) {
   const upcomingMatches = matches.filter(
-    (m) => (m.season || CURRENT_SEASON) === CURRENT_SEASON && matchResult(m) === null
+    (m) => (m.season || CURRENT_SEASON) === CURRENT_SEASON && matchResult(m) === null && !m.cancelled
   );
 
   return (
@@ -987,6 +987,16 @@ function CoachView({
   busy,
 }) {
   const [search, setSearch] = useState("");
+  const [suiviSeasonFilter, setSuiviSeasonFilter] = useState(null);
+  const suiviSeasons = useMemo(() => {
+    const set = new Set(state.matches.map((m) => m.season || "—"));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [state.matches]);
+  const effectiveSuiviSeason = suiviSeasonFilter ?? (suiviSeasons[0] || "all");
+  const suiviMatches = useMemo(
+    () => state.matches.filter((m) => effectiveSuiviSeason === "all" || (m.season || "—") === effectiveSuiviSeason),
+    [state.matches, effectiveSuiviSeason]
+  );
   const [activeMatch, setActiveMatch] = useState(state.matches[0].id);
   const [resetTarget, setResetTarget] = useState(null); // username being reset
   const [resetValue, setResetValue] = useState("");
@@ -1185,12 +1195,28 @@ function CoachView({
     )
     .sort((a, b) => a.playerName.localeCompare(b.playerName));
 
+  useEffect(() => {
+    if (suiviMatches.length > 0 && !suiviMatches.some((m) => m.id === activeMatch)) {
+      setActiveMatch(suiviMatches[0].id);
+    }
+  }, [suiviMatches, activeMatch]);
+
   return (
     <div>
       <div className="card">
         <h2>Vue d'ensemble par match</h2>
+        <select
+          className="match-select"
+          value={effectiveSuiviSeason}
+          onChange={(e) => setSuiviSeasonFilter(e.target.value)}
+        >
+          {suiviSeasons.map((s) => (
+            <option key={s} value={s}>Saison {s}</option>
+          ))}
+          <option value="all">Toutes les saisons</option>
+        </select>
         <div className="match-tabs">
-          {state.matches.map((m) => (
+          {suiviMatches.map((m) => (
             <button
               key={m.id}
               className={"mtab" + (activeMatch === m.id ? " active" : "")}
@@ -1500,7 +1526,17 @@ function FieldDiagram({ defense, roster }) {
             <text x={fp.x} y={fp.y + 1.4} textAnchor="middle" className="field-marker-label">
               {fp.short}
             </text>
-            <text x={fp.x} y={fp.y + 11.5} textAnchor="middle" className="field-marker-name">
+            {playerId && (
+              <rect
+                x={fp.x - 17}
+                y={fp.y + 11.5 - 4.6}
+                width="34"
+                height="6.4"
+                rx="2"
+                className="field-marker-name-bg"
+              />
+            )}
+            <text x={fp.x} y={fp.y + 11.5} textAnchor="middle" className={playerId ? "field-marker-name" : "field-marker-name field-marker-name-empty"}>
               {playerId ? nameFor(playerId) : "—"}
             </text>
           </g>
@@ -1796,8 +1832,21 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
                 >
                   🚌 Extérieur
                 </button>
+                <button
+                  className={"loc-btn loc-btn-cancel" + (m.cancelled ? " active" : "")}
+                  onClick={() => onUpdateField(m.id, "cancelled", !m.cancelled)}
+                  disabled={busy}
+                >
+                  🌧️ {m.cancelled ? "Match annulé" : "Marquer annulé"}
+                </button>
               </div>
-              {m.location === "exterieur" && (
+              {m.cancelled && (
+                <div className="hint" style={{ marginBottom: 10, color: "var(--bad)" }}>
+                  Ce match est marqué comme annulé (pluie ou autre) — il n'apparaît plus dans
+                  "Ma présence" et ne compte pas dans le bilan de l'équipe.
+                </div>
+              )}
+              {m.location === "exterieur" && !m.cancelled && (
                 <div className="hint" style={{ marginBottom: 10 }}>
                   Match à l'extérieur — le champ "Véhicule" apparaîtra pour les joueurs (covoiturage).
                 </div>
@@ -1876,7 +1925,7 @@ function ResultsView({ matches, canEdit, onSetInning }) {
     return (
       <div className="innings-row">
         <div className="innings-team-label">{teamLabel}</div>
-        {innings[teamKey].map((val, i) => (
+        {innings[teamKey].slice(0, 7).map((val, i) => (
           <div className="innings-cell" key={i}>
             {canEdit ? (
               <DebouncedInput
@@ -1899,15 +1948,20 @@ function ResultsView({ matches, canEdit, onSetInning }) {
       <h2>Résultats — feuille de score</h2>
       <select className="match-select" value={match.id} onChange={(e) => setMatchId(e.target.value)}>
         {matches.map((m) => (
-          <option key={m.id} value={m.id}>{m.label}{m.opponent ? ` vs ${m.opponent}` : ""}</option>
+          <option key={m.id} value={m.id}>{m.label}{m.opponent ? ` vs ${m.opponent}` : ""}{m.cancelled ? " (annulé)" : ""}</option>
         ))}
       </select>
       {!canEdit && <div className="hint" style={{ marginBottom: 12 }}>Vue en lecture seule — seul le coaching staff peut saisir les scores.</div>}
+      {match.cancelled && (
+        <div className="hint" style={{ marginBottom: 12, color: "var(--bad)" }}>
+          Ce match a été annulé (pluie ou autre) et n'a pas été rejoué — aucun score à saisir.
+        </div>
+      )}
 
       <div className="innings-table">
         <div className="innings-row innings-header">
           <div className="innings-team-label"></div>
-          {Array.from({ length: 9 }, (_, i) => (
+          {Array.from({ length: 7 }, (_, i) => (
             <div className="innings-cell innings-header-cell" key={i}>{i + 1}</div>
           ))}
           <div className="innings-total innings-header-cell">Total</div>
@@ -2179,6 +2233,8 @@ function HistoryView({ matches, lineups, roster }) {
                         {resultLabel[r.result]}
                       </span>
                     </>
+                  ) : r.cancelled ? (
+                    <span className="pill" style={{ background: "var(--bad)" }}>Annulé</span>
                   ) : (
                     <span className="pill pill-empty">Pas encore joué</span>
                   )}
@@ -2313,10 +2369,15 @@ const CSS = `
   font-family: 'Inter', sans-serif;
   background: var(--bg);
   color: var(--cream);
-  min-height: 100%;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  max-width: 100vw;
+  box-sizing: border-box;
 }
+.dragons-app * { box-sizing: border-box; }
+html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 
 .center-screen {
   display: flex;
@@ -2362,10 +2423,22 @@ const CSS = `
 .topbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .who { font-size: 13px; color: var(--muted); }
 
-.tab-switch { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.tab-switch {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tab-switch::-webkit-scrollbar { display: none; }
 .tsw {
   background: transparent;
   border: none;
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--cream);
   padding: 6px 12px;
   cursor: pointer;
@@ -2603,7 +2676,9 @@ const CSS = `
 .field-marker.filled { fill: var(--gold); stroke: var(--cream); }
 .field-marker-label { font-family: 'Oswald', sans-serif; font-size: 5.4px; fill: var(--cream); font-weight: 700; }
 .field-marker.filled + .field-marker-label { fill: #12280f; }
-.field-marker-name { font-family: 'Inter', sans-serif; font-size: 3.9px; font-weight: 700; fill: var(--cream); }
+.field-marker-name-bg { fill: rgba(241, 234, 214, 0.92); }
+.field-marker-name { font-family: 'Inter', sans-serif; font-size: 3.9px; font-weight: 700; fill: #12280f; }
+.field-marker-name-empty { fill: var(--muted); }
 
 .defense-list { display: flex; flex-direction: column; gap: 8px; }
 .defense-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 0; }
@@ -2712,6 +2787,7 @@ const CSS = `
   cursor: pointer;
 }
 .loc-btn.active { background: var(--gold); color: #12280f; border-color: var(--gold); font-weight: 600; }
+.loc-btn-cancel.active { background: var(--bad); border-color: var(--bad); color: #fff; }
 
 .matches-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 
@@ -2779,7 +2855,7 @@ const CSS = `
 }
 .innings-row {
   display: grid;
-  grid-template-columns: 90px repeat(9, minmax(32px, 1fr)) 56px;
+  grid-template-columns: 90px repeat(7, minmax(32px, 1fr)) 56px;
   align-items: center;
   border-top: 1px solid var(--line);
 }
