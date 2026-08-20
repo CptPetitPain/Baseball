@@ -136,6 +136,26 @@ function getLineup(state, matchId) {
 /* Small UI atoms                                                      */
 /* ------------------------------------------------------------------ */
 
+function DebouncedInput({ value, onCommit, ...props }) {
+  const [local, setLocal] = useState(value ?? "");
+  useEffect(() => {
+    setLocal(value ?? "");
+  }, [value]);
+  return (
+    <input
+      {...props}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => {
+        if (local !== (value ?? "")) onCommit(local);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.target.blur();
+      }}
+    />
+  );
+}
+
 function StatusPill({ value }) {
   const map = {
     present: { bg: "var(--ok)", label: "Présent" },
@@ -799,9 +819,9 @@ function PlayerView({ player, matches, presence, positions, onSetPresence, onSet
         </div>
         <label className="field" style={{ maxWidth: 160 }}>
           <span>Numéro de maillot</span>
-          <input
+          <DebouncedInput
             value={player.numero || ""}
-            onChange={(e) => onSetNumero(e.target.value)}
+            onCommit={(v) => onSetNumero(v)}
             disabled={busy}
             placeholder="ex: 24"
             inputMode="numeric"
@@ -1530,9 +1550,9 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, busy }
               <div className="match-admin-header">
                 <label className="field" style={{ flex: 1, marginBottom: 0 }}>
                   <span>Nom du match</span>
-                  <input
+                  <DebouncedInput
                     value={m.label}
-                    onChange={(e) => onUpdateField(m.id, "label", e.target.value)}
+                    onCommit={(v) => onUpdateField(m.id, "label", v)}
                     disabled={busy}
                     placeholder="ex: J1 - Match 1"
                   />
@@ -1556,18 +1576,18 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, busy }
               <div className="row-2">
                 <label className="field">
                   <span>Date</span>
-                  <input
+                  <DebouncedInput
                     value={m.date}
-                    onChange={(e) => onUpdateField(m.id, "date", e.target.value)}
+                    onCommit={(v) => onUpdateField(m.id, "date", v)}
                     disabled={busy}
                     placeholder="ex: 12 avril"
                   />
                 </label>
                 <label className="field">
                   <span>Équipe rencontrée</span>
-                  <input
+                  <DebouncedInput
                     value={m.opponent}
-                    onChange={(e) => onUpdateField(m.id, "opponent", e.target.value)}
+                    onCommit={(v) => onUpdateField(m.id, "opponent", v)}
                     disabled={busy}
                     placeholder="ex: Compiègne"
                   />
@@ -1621,10 +1641,10 @@ function ResultsView({ matches, canEdit, onSetInning }) {
         {innings[teamKey].map((val, i) => (
           <div className="innings-cell" key={i}>
             {canEdit ? (
-              <input
+              <DebouncedInput
                 type="number"
                 value={val === null || val === undefined ? "" : val}
-                onChange={(e) => onSetInning(match.id, teamKey, i, e.target.value === "" ? null : Number(e.target.value))}
+                onCommit={(v) => onSetInning(match.id, teamKey, i, v === "" ? null : Number(v))}
               />
             ) : (
               <span>{val === null || val === undefined ? "—" : val}</span>
@@ -1712,10 +1732,10 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
             <div className="standings-rank">{idx + 1}</div>
             <div>
               {canEdit ? (
-                <input
+                <DebouncedInput
                   className="standings-team-input"
                   value={team.team}
-                  onChange={(e) => onUpdateField(team.id, "team", e.target.value)}
+                  onCommit={(v) => onUpdateField(team.id, "team", v)}
                   disabled={busy}
                 />
               ) : (
@@ -1725,11 +1745,11 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
             {["w", "l", "t"].map((field) => (
               <div key={field}>
                 {canEdit ? (
-                  <input
+                  <DebouncedInput
                     type="number"
                     className="standings-num-input"
                     value={team[field]}
-                    onChange={(e) => onUpdateField(team.id, field, e.target.value === "" ? 0 : Number(e.target.value))}
+                    onCommit={(v) => onUpdateField(team.id, field, v === "" ? 0 : Number(v))}
                     disabled={busy}
                   />
                 ) : (
