@@ -1770,12 +1770,18 @@ function PresenceRosterView({ state }) {
   const match = state.matches.find((m) => m.id === matchId) || state.matches[0];
 
   const rows = useMemo(() => {
+    const statusOrder = { present: 0, reserve: 1, absent: 2 };
     return state.roster
       .map((p) => ({
         ...p,
         status: match ? (state.presence[p.id] || {})[match.id] : undefined,
       }))
-      .sort((a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom));
+      .sort((a, b) => {
+        const orderA = statusOrder[a.status] ?? 3;
+        const orderB = statusOrder[b.status] ?? 3;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.nom + a.prenom).localeCompare(b.nom + b.prenom);
+      });
   }, [state, match]);
 
   if (!match) {
