@@ -445,6 +445,10 @@ export default function DragonsApp() {
     return ok;
   }
 
+  async function updatePlayerField(playerId, field, value) {
+    await callMutation("updatePlayerField", { playerId, field, value });
+  }
+
   async function deletePlayer(playerId) {
     const ok = await callMutation("deletePlayer", { playerId });
     if (ok && session && session.playerId === playerId) {
@@ -653,6 +657,7 @@ export default function DragonsApp() {
             onSetAccountRole={(username, role) => doSetAccountRole(username, role)}
             onRenameAccount={(oldU, newU) => doRenameAccount(oldU, newU)}
             onDeletePlayer={(playerId) => deletePlayer(playerId)}
+            onUpdatePlayerField={(playerId, field, value) => updatePlayerField(playerId, field, value)}
             currentUsername={session.username}
             currentPlayerId={session.playerId}
             currentRole={session.role}
@@ -984,12 +989,16 @@ function CoachView({
   onSetAccountRole,
   onRenameAccount,
   onDeletePlayer,
+  onUpdatePlayerField,
   currentUsername,
   currentPlayerId,
   currentRole,
   busy,
 }) {
   const [search, setSearch] = useState("");
+  const [editPlayerId, setEditPlayerId] = useState(null);
+  const [editNom, setEditNom] = useState("");
+  const [editPrenom, setEditPrenom] = useState("");
   const [suiviSeasonFilter, setSuiviSeasonFilter] = useState(null);
   const suiviSeasons = useMemo(() => {
     const set = new Set(state.matches.map((m) => m.season || "—"));
@@ -1096,6 +1105,21 @@ function CoachView({
     await onDeletePlayer(playerId);
     setPlayerDeleteConfirm(null);
     setPlayerMsg("Joueur supprimé.");
+  }
+
+  function startEditPlayer(p) {
+    setEditPlayerId(p.id);
+    setEditNom(p.nom || "");
+    setEditPrenom(p.prenom || "");
+    setPlayerMsg("");
+  }
+
+  async function handleSavePlayerName(playerId) {
+    const p = players.find((pl) => pl.id === playerId);
+    if (p && editNom.trim() !== p.nom) await onUpdatePlayerField(playerId, "nom", editNom.trim().toUpperCase());
+    if (p && editPrenom.trim() !== p.prenom) await onUpdatePlayerField(playerId, "prenom", editPrenom.trim());
+    setEditPlayerId(null);
+    setPlayerMsg("Nom mis à jour.");
   }
 
   async function handlePlayerBulkDelete() {
@@ -1307,7 +1331,24 @@ function CoachView({
                     disabled={!canDeletePlayerRow(p)}
                   />
                 </div>
-                <div className="grid-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
+                {editPlayerId === p.id ? (
+                  <div className="grid-name-edit">
+                    <DebouncedInput
+                      value={editPrenom}
+                      onCommit={setEditPrenom}
+                      placeholder="Prénom"
+                      disabled={busy}
+                    />
+                    <DebouncedInput
+                      value={editNom}
+                      onCommit={setEditNom}
+                      placeholder="Nom"
+                      disabled={busy}
+                    />
+                  </div>
+                ) : (
+                  <div className="grid-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
+                )}
                 <div className="grid-pos">
                   {[pos.pos1, pos.pos2, pos.pos3].filter(Boolean).join(" · ") || "—"}
                 </div>
@@ -1317,7 +1358,16 @@ function CoachView({
                   </button>
                 </div>
                 <div>
-                  {playerDeleteConfirm === p.id ? (
+                  {editPlayerId === p.id ? (
+                    <div className="reset-form">
+                      <button className="btn-primary small" disabled={busy} onClick={() => handleSavePlayerName(p.id)}>
+                        Enregistrer
+                      </button>
+                      <button className="btn-ghost small" onClick={() => setEditPlayerId(null)}>
+                        Annuler
+                      </button>
+                    </div>
+                  ) : playerDeleteConfirm === p.id ? (
                     <div className="reset-form">
                       <button className="btn-danger small" disabled={busy} onClick={() => handleDeletePlayer(p.id)}>
                         Confirmer
@@ -1327,20 +1377,25 @@ function CoachView({
                       </button>
                     </div>
                   ) : (
-                    <button
-                      className="btn-danger small"
-                      onClick={() => { setPlayerDeleteConfirm(p.id); setPlayerMsg(""); }}
-                      disabled={p.id === currentPlayerId || playerLinkedStaffBlocked(p.id)}
-                      title={
-                        p.id === currentPlayerId
-                          ? "Tu ne peux pas te supprimer toi-même."
-                          : playerLinkedStaffBlocked(p.id)
-                          ? "Seul le compte propriétaire peut supprimer un membre du staff."
-                          : ""
-                      }
-                    >
-                      Supprimer
-                    </button>
+                    <div className="account-actions">
+                      <button className="btn-ghost small" onClick={() => startEditPlayer(p)} disabled={busy}>
+                        Modifier
+                      </button>
+                      <button
+                        className="btn-danger small"
+                        onClick={() => { setPlayerDeleteConfirm(p.id); setPlayerMsg(""); }}
+                        disabled={p.id === currentPlayerId || playerLinkedStaffBlocked(p.id)}
+                        title={
+                          p.id === currentPlayerId
+                            ? "Tu ne peux pas te supprimer toi-même."
+                            : playerLinkedStaffBlocked(p.id)
+                            ? "Seul le compte propriétaire peut supprimer un membre du staff."
+                            : ""
+                        }
+                      >
+                        Supprimer
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -2636,6 +2691,15 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .grid-row { border-top: 1px solid var(--line); font-size: 13px; }
 .grid-row:nth-child(even) { background: rgba(255,255,255,0.02); }
 .grid-name { font-family: 'Inter', sans-serif; }
+.grid-name-edit { display: flex; flex-direction: column; gap: 4px; }
+.grid-name-edit input {
+  background: #0c2015;
+  border: 1px solid var(--line);
+  color: var(--cream);
+  padding: 5px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+}
 .grid-pos { font-size: 12px; color: var(--muted); }
 .grid-header-with-actions, .grid-row-with-actions {
   grid-template-columns: 24px 2fr 2fr 1.2fr auto;

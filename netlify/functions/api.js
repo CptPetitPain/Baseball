@@ -562,6 +562,18 @@ async function applyMutation(store, state, session, action, body) {
       s = logAction(s, actingUser, `a renommé le compte "${oldUsername}" → "${uname}"`);
       break;
     }
+    case "updatePlayerField": {
+      if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
+      const { playerId, field, value } = body;
+      if (!["nom", "prenom", "numero"].includes(field)) return { error: "Champ invalide." };
+      const target = s.roster.find((p) => p.id === playerId);
+      if (!target) return { error: "Joueur introuvable." };
+      const roster = s.roster.map((p) => (p.id === playerId ? { ...p, [field]: value } : p));
+      s = { ...s, roster };
+      const fieldLabels = { nom: "le nom", prenom: "le prénom", numero: "le numéro" };
+      s = logAction(s, actingUser, `a modifié ${fieldLabels[field]} de "${target.prenom} ${target.nom}"`);
+      break;
+    }
     case "deletePlayer": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { playerId } = body;
