@@ -1470,11 +1470,11 @@ function FieldDiagram({ defense, roster }) {
         const playerId = defense[fp.key];
         return (
           <g key={fp.key}>
-            <circle cx={fp.x} cy={fp.y} r="6" className={playerId ? "field-marker filled" : "field-marker"} />
-            <text x={fp.x} y={fp.y + 1.2} textAnchor="middle" className="field-marker-label">
+            <circle cx={fp.x} cy={fp.y} r="7.5" className={playerId ? "field-marker filled" : "field-marker"} />
+            <text x={fp.x} y={fp.y + 1.4} textAnchor="middle" className="field-marker-label">
               {fp.short}
             </text>
-            <text x={fp.x} y={fp.y + 9.5} textAnchor="middle" className="field-marker-name">
+            <text x={fp.x} y={fp.y + 10.5} textAnchor="middle" className="field-marker-name">
               {playerId ? nameFor(playerId) : "—"}
             </text>
           </g>
@@ -1506,6 +1506,15 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
   function playerLabel(p) {
     return `${p.prenom} ${p.nom}${p.numero ? " #" + p.numero : ""}`;
   }
+
+  const usedInDefense = useMemo(
+    () => new Set(Object.values(lineup.defense).filter(Boolean)),
+    [lineup.defense]
+  );
+  const usedInBatting = useMemo(
+    () => new Set(lineup.batting.filter(Boolean)),
+    [lineup.batting]
+  );
 
   async function handleDefenseChange(posteKey, playerId) {
     if (playerId) {
@@ -1549,8 +1558,8 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
           <FieldDiagram defense={lineup.defense} roster={state.roster} />
         </div>
         <div className="hint" style={{ marginBottom: 10 }}>
-          Choisir un joueur déjà placé ailleurs le déplace automatiquement — impossible de le
-          dupliquer à deux postes.
+          Les joueurs déjà placés à un autre poste apparaissent en <span style={{ color: "var(--bad)" }}>rouge</span> dans
+          les listes ci-dessous. Les choisir ailleurs les y déplace — jamais de doublon.
         </div>
         <div className="defense-list">
           {FIELD_POSITIONS.map((fp) => (
@@ -1562,11 +1571,14 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
                 disabled={busy}
               >
                 <option value="">—</option>
-                {eligible.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {playerLabel(p)}{p.prefs.includes(fp.key) ? " ★ poste souhaité" : ""}
-                  </option>
-                ))}
+                {eligible.map((p) => {
+                  const alreadyPlaced = usedInDefense.has(p.id) && lineup.defense[fp.key] !== p.id;
+                  return (
+                    <option key={p.id} value={p.id} style={alreadyPlaced ? { color: "#e05a4e" } : undefined}>
+                      {alreadyPlaced ? "🔴 " : ""}{playerLabel(p)}{p.prefs.includes(fp.key) ? " ★ poste souhaité" : ""}{alreadyPlaced ? " — déjà placé" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </label>
           ))}
@@ -1576,8 +1588,8 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
       <div className="card">
         <h2>Ordre au bâton</h2>
         <div className="hint" style={{ marginBottom: 10 }}>
-          Même principe : un joueur déjà positionné dans l'ordre au bâton est déplacé, jamais
-          dupliqué.
+          Même principe : les joueurs déjà positionnés dans l'ordre au bâton apparaissent en
+          rouge — les choisir ailleurs les y déplace, jamais de doublon.
         </div>
         <div className="batting-list">
           {lineup.batting.map((playerId, idx) => (
@@ -1589,9 +1601,14 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
                 disabled={busy}
               >
                 <option value="">—</option>
-                {eligible.map((p) => (
-                  <option key={p.id} value={p.id}>{playerLabel(p)}</option>
-                ))}
+                {eligible.map((p) => {
+                  const alreadyPlaced = usedInBatting.has(p.id) && lineup.batting[idx] !== p.id;
+                  return (
+                    <option key={p.id} value={p.id} style={alreadyPlaced ? { color: "#e05a4e" } : undefined}>
+                      {alreadyPlaced ? "🔴 " : ""}{playerLabel(p)}{alreadyPlaced ? " — déjà placé" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </label>
           ))}
@@ -2076,13 +2093,8 @@ function HistoryView({ matches, lineups, roster }) {
                   {defenseEntries.length > 0 && (
                     <div className="hist-comp-block">
                       <div className="hist-comp-title">Défense</div>
-                      <div className="hist-comp-grid">
-                        {defenseEntries.map((fp) => (
-                          <div className="hist-comp-item" key={fp.key}>
-                            <span className="hist-comp-poste">{fp.key}</span>
-                            <span>{playerName(lineup.defense[fp.key]) || "—"}</span>
-                          </div>
-                        ))}
+                      <div className="field-wrap field-wrap-history">
+                        <FieldDiagram defense={lineup.defense} roster={roster} />
                       </div>
                     </div>
                   )}
@@ -2477,7 +2489,7 @@ const CSS = `
   margin-bottom: 8px;
 }
 
-.field-wrap { max-width: 340px; margin: 0 auto 16px auto; }
+.field-wrap { max-width: 520px; margin: 0 auto 16px auto; }
 .field-svg { width: 100%; height: auto; display: block; }
 .field-grass { fill: #1e5c34; }
 .field-outfield { fill: #23663a; }
@@ -2486,9 +2498,9 @@ const CSS = `
 .field-base { fill: var(--cream); }
 .field-marker { fill: rgba(12,32,21,0.85); stroke: var(--gold); stroke-width: 0.6; }
 .field-marker.filled { fill: var(--gold); stroke: var(--cream); }
-.field-marker-label { font-family: 'Oswald', sans-serif; font-size: 4.2px; fill: var(--cream); font-weight: 600; }
+.field-marker-label { font-family: 'Oswald', sans-serif; font-size: 5.4px; fill: var(--cream); font-weight: 700; }
 .field-marker.filled + .field-marker-label { fill: #12280f; }
-.field-marker-name { font-family: 'Inter', sans-serif; font-size: 3.4px; fill: var(--cream); }
+.field-marker-name { font-family: 'Inter', sans-serif; font-size: 4.6px; font-weight: 700; fill: var(--cream); }
 
 .defense-list { display: flex; flex-direction: column; gap: 8px; }
 .defense-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 0; }
@@ -2828,7 +2840,7 @@ const CSS = `
   color: var(--muted);
   margin-bottom: 6px;
 }
-.hist-comp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
+.field-wrap-history { max-width: 300px; margin: 0 auto; }
 .hist-comp-batting { display: flex; flex-direction: column; gap: 4px; }
 .hist-comp-item {
   display: flex;
