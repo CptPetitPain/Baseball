@@ -269,6 +269,14 @@ export default function DragonsApp() {
     try {
       const res = await callApi({ action, token: authToken, ...payload });
       setState(res.state);
+      if (res.newToken) {
+        setAuthToken(res.newToken);
+        try {
+          window.localStorage.setItem(TOKEN_STORAGE_KEY, res.newToken);
+        } catch (e) {
+          /* ignore storage errors */
+        }
+      }
       return true;
     } catch (e) {
       setError(e.message || "Une erreur est survenue. Réessaie.");
@@ -289,7 +297,6 @@ export default function DragonsApp() {
       }
       const res = await callApi({
         action: "signup",
-        username: form.username,
         password: form.password,
         playerId: form.playerId,
         newNom: form.newNom,
@@ -616,6 +623,7 @@ export default function DragonsApp() {
             onSetVehicule={(matchId, v) => setVehicule(me.id, matchId, v)}
             onSetPosition={(slot, v) => setPosition(me.id, slot, v)}
             onSetNumero={(v) => setNumero(me.id, v)}
+            onChangePassword={(newPassword) => doResetPassword(session.username, newPassword)}
             busy={busy}
           />
         )}
@@ -738,6 +746,16 @@ function LoginView({ onLogin, onGoSignup, error, busy }) {
 /* Signup                                                              */
 /* ------------------------------------------------------------------ */
 
+function slugUsernamePreview(prenom, nom) {
+  const clean = (s) =>
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+  return clean(prenom) + clean(nom);
+}
+
 function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
   const claimedIds = useMemo(
     () => new Set(Object.values(accounts).map((a) => a.playerId)),
@@ -750,7 +768,6 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
   const [playerId, setPlayerId] = useState(available[0]?.id || "__new__");
   const [newNom, setNewNom] = useState("");
   const [newPrenom, setNewPrenom] = useState("");
-  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
   const [isStaff, setIsStaff] = useState(false);
@@ -766,11 +783,11 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
     }
   }, []);
 
-  function suggestUsername(id) {
-    if (id === "__new__") return;
-    const p = roster.find((r) => r.id === id);
-    if (p) setUsername(slugify(p.nom, p.prenom));
-  }
+  const usernamePreview = useMemo(() => {
+    if (playerId === "__new__") return slugUsernamePreview(newPrenom, newNom);
+    const p = roster.find((r) => r.id === playerId);
+    return p ? slugUsernamePreview(p.prenom, p.nom) : "";
+  }, [playerId, newNom, newPrenom, roster]);
 
   const mismatch = password && password2 && password !== password2;
 
@@ -782,10 +799,7 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
         <span>Qui es-tu ?</span>
         <select
           value={playerId}
-          onChange={(e) => {
-            setPlayerId(e.target.value);
-            suggestUsername(e.target.value);
-          }}
+          onChange={(e) => setPlayerId(e.target.value)}
         >
           {available.map((p) => (
             <option key={p.id} value={p.id}>
@@ -809,10 +823,13 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
         </div>
       )}
 
-      <label className="field">
-        <span>Identifiant</span>
-        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex: prénom.nom" />
-      </label>
+      <div className="username-preview">
+        <span>Ton identifiant de connexion sera :</span>
+        <strong>{usernamePreview || "—"}</strong>
+        <span className="hint" style={{ margin: 0 }}>
+          Généré automatiquement à partir de ton nom, sans espace ni accent — rien à taper.
+        </span>
+      </div>
       <div className="row-2">
         <label className="field">
           <span>Mot de passe</span>
@@ -864,7 +881,7 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
         className="btn-primary"
         disabled={busy || mismatch}
         onClick={() =>
-          onSubmit({ playerId, newNom, newPrenom, username, password, isStaff, staffCode, isOwner, ownerCode })
+          onSubmit({ playerId, newNom, newPrenom, password, isStaff, staffCode, isOwner, ownerCode })
         }
       >
         {busy ? "…" : "Créer mon compte"}
@@ -880,13 +897,69 @@ function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
 /* Player view                                                         */
 /* ------------------------------------------------------------------ */
 
-function PlayerView({ player, matches, presence, positions, onSetPresence, onSetVehicule, onSetPosition, onSetNumero, busy }) {
+function PlayerView({ player, matches, presence, positions, onSetPresence, onSetVehicule, onSetPosition, onSetNumero, onChangePassword, busy }) {
   const upcomingMatches = matches.filter(
     (m) => (m.season || CURRENT_SEASON) === CURRENT_SEASON && matchResult(m) === null && !m.cancelled
   );
 
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwMsg, setPwMsg] = useState("");
+  const [pwError, setPwError] = useState("");
+  const pwMismatch = newPassword && confirmPassword && newPassword !== confirmPassword;
+
+  async function handleChangePassword() {
+    setPwMsg("");
+    setPwError("");
+    if (!newPassword || newPassword.length < 4) {
+      setPwError("Le nouveau mot de passe doit faire au moins 4 caractères.");
+      return;
+    }
+    if (pwMismatch) {
+      setPwError("Les mots de passe ne correspondent pas.");
+      return;
+    }
+    const success = await onChangePassword(newPassword);
+    if (success) {
+      setNewPassword("");
+      setConfirmPassword("");
+      setPwMsg("Mot de passe mis à jour.");
+    } else {
+      setPwError("Une erreur est survenue. Réessaie.");
+    }
+  }
+
   return (
     <div>
+      <div className="card">
+        <h2>Mon compte</h2>
+        <div className="row-2">
+          <label className="field">
+            <span>Nouveau mot de passe</span>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <label className="field">
+            <span>Confirmer</span>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+        </div>
+        {pwError && <div className="error">{pwError}</div>}
+        {pwMsg && <div className="ok-msg">{pwMsg}</div>}
+        <button className="btn-primary small" onClick={handleChangePassword} disabled={busy || !newPassword}>
+          Changer mon mot de passe
+        </button>
+      </div>
+
       <div className="card">
         <h2>Mes infos</h2>
         <div className="me-grid">
@@ -1312,18 +1385,18 @@ function CoachView({
 
         <div className="grid-table">
           <div className="grid-header grid-header-with-actions">
-            <div></div>
-            <div>Joueur</div>
-            <div>Postes</div>
-            <div>Statut — {state.matches.find((m) => m.id === activeMatch)?.label}</div>
-            <div>Actions</div>
+            <div className="gp-check"></div>
+            <div className="gp-name">Joueur</div>
+            <div className="gp-pos">Postes</div>
+            <div className="gp-status">Statut — {state.matches.find((m) => m.id === activeMatch)?.label}</div>
+            <div className="gp-actions">Actions</div>
           </div>
           {players.map((p) => {
             const pos = state.positions[p.id] || {};
             const status = (state.presence[p.id] || {})[activeMatch];
             return (
               <div className="grid-row grid-row-with-actions" key={p.id}>
-                <div>
+                <div className="gp-check">
                   <input
                     type="checkbox"
                     checked={selectedPlayers.has(p.id)}
@@ -1332,7 +1405,7 @@ function CoachView({
                   />
                 </div>
                 {editPlayerId === p.id ? (
-                  <div className="grid-name-edit">
+                  <div className="grid-name-edit gp-name">
                     <DebouncedInput
                       value={editPrenom}
                       onCommit={setEditPrenom}
@@ -1347,17 +1420,17 @@ function CoachView({
                     />
                   </div>
                 ) : (
-                  <div className="grid-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
+                  <div className="grid-name gp-name">{p.prenom} {p.nom}{p.numero ? ` · #${p.numero}` : ""}</div>
                 )}
-                <div className="grid-pos">
+                <div className="grid-pos gp-pos">
                   {[pos.pos1, pos.pos2, pos.pos3].filter(Boolean).join(" · ") || "—"}
                 </div>
-                <div>
+                <div className="gp-status">
                   <button className="cell-status" style={{ cursor: busy ? "wait" : "pointer" }} onClick={() => !busy && cycleStatus(p.id)}>
                     <StatusPill value={status} />
                   </button>
                 </div>
-                <div>
+                <div className="gp-actions">
                   {editPlayerId === p.id ? (
                     <div className="reset-form">
                       <button className="btn-primary small" disabled={busy} onClick={() => handleSavePlayerName(p.id)}>
@@ -1966,13 +2039,39 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
 /* ------------------------------------------------------------------ */
 
 function ResultsView({ matches, canEdit, onSetInning }) {
+  const seasons = useMemo(() => {
+    const set = new Set(matches.map((m) => m.season || "—"));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [matches]);
+  const [seasonFilter, setSeasonFilter] = useState(null);
+  const effectiveSeason = seasonFilter ?? (seasons[0] || "all");
+  const seasonMatches = useMemo(
+    () => matches.filter((m) => effectiveSeason === "all" || (m.season || "—") === effectiveSeason),
+    [matches, effectiveSeason]
+  );
+
   const [matchId, setMatchId] = useState(matches[0]?.id);
-  const match = matches.find((m) => m.id === matchId) || matches[0];
+  const match = seasonMatches.find((m) => m.id === matchId) || seasonMatches[0];
+
+  const seasonPicker = (
+    <select
+      className="match-select"
+      value={effectiveSeason}
+      onChange={(e) => { setSeasonFilter(e.target.value); setMatchId(null); }}
+    >
+      {seasons.map((s) => (
+        <option key={s} value={s}>Saison {s}</option>
+      ))}
+      <option value="all">Toutes les saisons</option>
+    </select>
+  );
+
   if (!match) {
     return (
       <div className="card">
         <h2>Résultats</h2>
-        <div className="hint">Aucun match pour l'instant.</div>
+        {seasonPicker}
+        <div className="hint">Aucun match pour cette saison.</div>
       </div>
     );
   }
@@ -2005,8 +2104,9 @@ function ResultsView({ matches, canEdit, onSetInning }) {
   return (
     <div className="card">
       <h2>Résultats — feuille de score</h2>
+      {seasonPicker}
       <select className="match-select" value={match.id} onChange={(e) => setMatchId(e.target.value)}>
-        {matches.map((m) => (
+        {seasonMatches.map((m) => (
           <option key={m.id} value={m.id}>{m.label}{m.opponent ? ` vs ${m.opponent}` : ""}{m.cancelled ? " (annulé)" : ""}</option>
         ))}
       </select>
@@ -2353,8 +2453,19 @@ function HistoryView({ matches, lineups, roster }) {
 /* ------------------------------------------------------------------ */
 
 function PresenceRosterView({ state }) {
+  const seasons = useMemo(() => {
+    const set = new Set(state.matches.map((m) => m.season || "—"));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [state.matches]);
+  const [seasonFilter, setSeasonFilter] = useState(null);
+  const effectiveSeason = seasonFilter ?? (seasons[0] || "all");
+  const seasonMatches = useMemo(
+    () => state.matches.filter((m) => effectiveSeason === "all" || (m.season || "—") === effectiveSeason),
+    [state.matches, effectiveSeason]
+  );
+
   const [matchId, setMatchId] = useState(state.matches[0]?.id);
-  const match = state.matches.find((m) => m.id === matchId) || state.matches[0];
+  const match = seasonMatches.find((m) => m.id === matchId) || seasonMatches[0];
 
   const rows = useMemo(() => {
     const statusOrder = { present: 0, reserve: 1, absent: 2 };
@@ -2371,23 +2482,29 @@ function PresenceRosterView({ state }) {
       });
   }, [state, match]);
 
-  if (!match) {
-    return (
-      <div className="card">
-        <h2>Présences de l'équipe</h2>
-        <div className="hint">Aucun match pour l'instant.</div>
-      </div>
-    );
-  }
-
   return (
     <div className="card">
       <h2>Présences de l'équipe</h2>
+      <select
+        className="match-select"
+        value={effectiveSeason}
+        onChange={(e) => { setSeasonFilter(e.target.value); setMatchId(null); }}
+      >
+        {seasons.map((s) => (
+          <option key={s} value={s}>Saison {s}</option>
+        ))}
+        <option value="all">Toutes les saisons</option>
+      </select>
+      {!match ? (
+        <div className="hint">Aucun match pour cette saison.</div>
+      ) : (
       <select className="match-select" value={match.id} onChange={(e) => setMatchId(e.target.value)}>
-        {state.matches.map((m) => (
+        {seasonMatches.map((m) => (
           <option key={m.id} value={m.id}>{m.label}{m.opponent ? ` vs ${m.opponent}` : ""} — {m.date}</option>
         ))}
       </select>
+      )}
+      {match && (
       <div className="grid-table">
         <div className="grid-header grid-header-with-vehicule">
           <div>Joueur</div>
@@ -2410,6 +2527,7 @@ function PresenceRosterView({ state }) {
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -2548,6 +2666,24 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 }
 
 .auth-card { max-width: 420px; margin: 40px auto; }
+
+.username-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #0c2015;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.username-preview strong {
+  color: var(--gold);
+  font-family: 'Roboto Mono', monospace;
+  font-size: 15px;
+}
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
 .field input, .field select {
@@ -2703,6 +2839,28 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .grid-pos { font-size: 12px; color: var(--muted); }
 .grid-header-with-actions, .grid-row-with-actions {
   grid-template-columns: 24px 2fr 2fr 1.2fr auto;
+}
+
+@media (max-width: 640px) {
+  .grid-header-with-actions { display: none; }
+  .grid-row-with-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "check name"
+      "pos pos"
+      "status status"
+      "actions actions";
+    gap: 8px;
+    padding: 12px;
+  }
+  .gp-check { grid-area: check; align-self: start; }
+  .gp-name { grid-area: name; }
+  .gp-pos { grid-area: pos; }
+  .gp-status { grid-area: status; }
+  .gp-actions { grid-area: actions; }
+  .gp-actions .account-actions,
+  .gp-actions .reset-form { flex-wrap: wrap; }
 }
 .grid-header-with-vehicule, .grid-row-with-vehicule {
   grid-template-columns: 2fr 2fr 1.2fr 90px;

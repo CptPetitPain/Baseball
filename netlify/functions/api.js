@@ -239,13 +239,34 @@ function fail(statusCode, message) {
 /* Auth                                                                 */
 /* ------------------------------------------------------------------ */
 
-async function requireSession(store, token) {
+async function requireSession(store, token, state) {
   if (!token) return null;
   const sessions = await loadSessions(store);
   const sess = sessions[token];
   if (!sess) return null;
   if (sess.expiresAt < Date.now()) return null;
-  return sess;
+  // Never trust the role/playerId cached at login time — always re-check
+  // against the live account record. This is what actually prevents a
+  // token from outliving an account being demoted, renamed, or deleted:
+  // without this check, a session created while someone was staff would
+  // keep working with staff-level access even after being kicked, right
+  // up until the token's natural expiry.
+  const acc = state.accounts[sess.username];
+  if (!acc) return null; // account deleted or renamed since login
+  if (acc.role !== sess.role || acc.playerId !== sess.playerId) return null; // stale session
+  return { username: sess.username, role: acc.role, playerId: acc.playerId };
+}
+
+async function invalidateSessionsForUser(store, username) {
+  const sessions = await loadSessions(store);
+  let changed = false;
+  Object.keys(sessions).forEach((t) => {
+    if (sessions[t].username === username) {
+      delete sessions[t];
+      changed = true;
+    }
+  });
+  if (changed) await saveSessions(store, sessions);
 }
 
 async function createSession(store, username, role, playerId) {
@@ -266,10 +287,20 @@ async function destroySession(store, token) {
   await saveSessions(store, sessions);
 }
 
+function slugUsername(prenom, nom) {
+  const clean = (s) =>
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+  const base = clean(prenom) + clean(nom);
+  return base || "joueur";
+}
+
 async function doSignup(store, body) {
-  const uname = (body.username || "").trim().toLowerCase();
   const password = body.password || "";
-  if (!uname || !password) return fail(400, "Identifiant et mot de passe sont obligatoires.");
+  if (!password) return fail(400, "Le mot de passe est obligatoire.");
   if (password.length < 4) return fail(400, "Le mot de passe doit faire au moins 4 caractères.");
 
   let role = "player";
@@ -282,12 +313,13 @@ async function doSignup(store, body) {
   }
 
   const state = await loadAppState(store);
-  if (state.accounts[uname]) return fail(409, "Cet identifiant est déjà pris.");
 
   let finalPlayerId = body.playerId;
   let roster = state.roster;
   let presence = state.presence;
   let positions = state.positions;
+  let resolvedNom = "";
+  let resolvedPrenom = "";
 
   if (body.playerId === "__new__") {
     const newNom = (body.newNom || "").trim();
@@ -297,9 +329,26 @@ async function doSignup(store, body) {
     roster = [...roster, { id: finalPlayerId, nom: newNom.toUpperCase(), prenom: newPrenom, numero: "", pos1: "", pos2: "", pos3: "" }];
     presence = { ...presence, [finalPlayerId]: {} };
     positions = { ...positions, [finalPlayerId]: { pos1: "", pos2: "", pos3: "" } };
+    resolvedNom = newNom;
+    resolvedPrenom = newPrenom;
   } else {
     const claimed = Object.values(state.accounts).some((a) => a.playerId === finalPlayerId);
     if (claimed) return fail(409, "Ce joueur a déjà un compte. Connecte-toi ou choisis \"Nouveau joueur\".");
+    const player = roster.find((p) => p.id === finalPlayerId);
+    if (!player) return fail(400, "Joueur introuvable.");
+    resolvedNom = player.nom;
+    resolvedPrenom = player.prenom;
+  }
+
+  // The identifiant is generated automatically (prénom+nom, tout collé, en
+  // minuscules) rather than left to free typing, to avoid inconsistent
+  // formats (spaces, dots, capitals) from less tech-savvy players.
+  const base = slugUsername(resolvedPrenom, resolvedNom);
+  let uname = base;
+  let suffix = 2;
+  while (state.accounts[uname]) {
+    uname = base + suffix;
+    suffix++;
   }
 
   const hash = sha256(password);
@@ -520,7 +569,16 @@ async function applyMutation(store, state, session, action, body) {
       if (!isStaffRole(role) && username !== actingUser) return { error: "Action non autorisée." };
       s = { ...s, accounts: { ...s.accounts, [username]: { ...s.accounts[username], passwordHash: sha256(newPassword) } } };
       s = logAction(s, actingUser, `a réinitialisé le mot de passe de "${username}"`);
-      break;
+      await invalidateSessionsForUser(store, username);
+      // Changing your OWN password would otherwise kill your own current
+      // session too — issue a fresh token right away so there's no
+      // surprise logout.
+      let newToken;
+      if (username === actingUser) {
+        newToken = await createSession(store, username, role, s.accounts[username].playerId);
+      }
+      await saveAppState(store, s);
+      return { state: s, newToken };
     }
     case "deleteAccount": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
@@ -630,11 +688,6 @@ export async function handler(event) {
   const store = getBlobStore();
 
   try {
-    if (action === "getState") {
-      const state = await loadAppState(store);
-      return ok({ state: sanitize(state) });
-    }
-
     if (action === "signup") return await doSignup(store, body);
     if (action === "login") return await doLogin(store, body);
 
@@ -643,13 +696,19 @@ export async function handler(event) {
       return ok({ success: true });
     }
 
-    const session = await requireSession(store, token);
+    const state = await loadAppState(store);
+
+    if (action === "getState") {
+      const session = token ? await requireSession(store, token, state) : null;
+      return ok({ state: sanitize(state), session });
+    }
+
+    const session = await requireSession(store, token, state);
     if (!session) return fail(401, "Session invalide, reconnecte-toi.");
 
-    const state = await loadAppState(store);
     const result = await applyMutation(store, state, session, action, body);
     if (result.error) return fail(400, result.error);
-    return ok({ state: sanitize(result.state) });
+    return ok({ state: sanitize(result.state), newToken: result.newToken });
   } catch (e) {
     return fail(500, "Erreur serveur: " + e.message);
   }
