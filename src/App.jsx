@@ -145,7 +145,7 @@ function isStaffRole(role) {
    roughly 20 vertical units of clearance) so that no two labels can ever
    touch, even with the longest names the truncation allows. */
 const FIELD_POSITIONS = [
-  { key: "Champ centre", short: "CC", x: 50, y: 14 },
+  { key: "Champ centre", short: "CF", x: 50, y: 14 },
   { key: "Champ gauche", short: "LF", x: 20, y: 38 },
   { key: "Champ droit", short: "RF", x: 80, y: 38 },
   { key: "Arrêt-court", short: "SS", x: 27, y: 62 },
@@ -605,7 +605,7 @@ export default function DragonsApp() {
         {!session && screen === "signup" && (
           <SignupView
             roster={state.roster}
-            accounts={state.accounts}
+            claimedPlayerIds={state.claimedPlayerIds}
             onSubmit={doSignup}
             onGoLogin={() => { setError(""); setScreen("login"); }}
             error={error}
@@ -756,10 +756,10 @@ function slugUsernamePreview(prenom, nom) {
   return clean(prenom) + clean(nom);
 }
 
-function SignupView({ roster, accounts, onSubmit, onGoLogin, error, busy }) {
+function SignupView({ roster, claimedPlayerIds, onSubmit, onGoLogin, error, busy }) {
   const claimedIds = useMemo(
-    () => new Set(Object.values(accounts).map((a) => a.playerId)),
-    [accounts]
+    () => new Set(claimedPlayerIds || []),
+    [claimedPlayerIds]
   );
   const available = roster
     .filter((p) => !claimedIds.has(p.id))

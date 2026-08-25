@@ -192,12 +192,24 @@ function randomToken() {
   return crypto.randomBytes(24).toString("hex");
 }
 
-function sanitize(state) {
-  const accounts = {};
-  Object.entries(state.accounts).forEach(([uname, acc]) => {
-    accounts[uname] = { playerId: acc.playerId, role: acc.role };
-  });
-  return { ...state, accounts };
+/* The full account list (usernames + roles) is only ever included for
+   an authenticated staff session. Anyone else — including logged-out
+   visitors and logged-in players — only gets which player IDs already
+   have an account (needed for the signup dropdown), never usernames or
+   roles. This keeps the roster of who's staff/owner from being visible
+   to anyone poking at network requests. */
+function sanitize(state, session) {
+  const isStaff = session && STAFF_ROLES.includes(session.role);
+  if (isStaff) {
+    const accounts = {};
+    Object.entries(state.accounts).forEach(([uname, acc]) => {
+      accounts[uname] = { playerId: acc.playerId, role: acc.role };
+    });
+    return { ...state, accounts };
+  }
+  const claimedPlayerIds = Object.values(state.accounts).map((acc) => acc.playerId);
+  const { accounts, ...rest } = state;
+  return { ...rest, claimedPlayerIds };
 }
 
 function nowLabel() {
@@ -363,7 +375,7 @@ async function doSignup(store, body) {
   await saveAppState(store, next);
 
   const token = await createSession(store, uname, role, finalPlayerId);
-  return ok({ token, username: uname, role, playerId: finalPlayerId, state: sanitize(next) });
+  return ok({ token, username: uname, role, playerId: finalPlayerId, state: sanitize(next, { role }) });
 }
 
 async function doLogin(store, body) {
@@ -374,7 +386,7 @@ async function doLogin(store, body) {
   if (!acc) return fail(401, "Identifiant inconnu.");
   if (sha256(password) !== acc.passwordHash) return fail(401, "Mot de passe incorrect.");
   const token = await createSession(store, uname, acc.role, acc.playerId);
-  return ok({ token, username: uname, role: acc.role, playerId: acc.playerId, state: sanitize(state) });
+  return ok({ token, username: uname, role: acc.role, playerId: acc.playerId, state: sanitize(state, { role: acc.role }) });
 }
 
 /* ------------------------------------------------------------------ */
@@ -700,7 +712,7 @@ export async function handler(event) {
 
     if (action === "getState") {
       const session = token ? await requireSession(store, token, state) : null;
-      return ok({ state: sanitize(state), session });
+      return ok({ state: sanitize(state, session), session });
     }
 
     const session = await requireSession(store, token, state);
@@ -708,7 +720,7 @@ export async function handler(event) {
 
     const result = await applyMutation(store, state, session, action, body);
     if (result.error) return fail(400, result.error);
-    return ok({ state: sanitize(result.state), newToken: result.newToken });
+    return ok({ state: sanitize(result.state, session), newToken: result.newToken });
   } catch (e) {
     return fail(500, "Erreur serveur: " + e.message);
   }
