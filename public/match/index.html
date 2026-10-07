@@ -283,7 +283,7 @@ async function syncNow(){
   try{
     for(const id of db.deleted.slice()){await api({action:'deleteScoresheet',sheetId:id});db.deleted=db.deleted.filter(x=>x!==id);save()}
     for(const m of dirty){
-      const sent=m.updated;const r=await api({action:'saveScoresheet',sheet:strip(m)});
+      const sent=m.updated;const r=await api({action:'saveScoresheet',sheet:strip(m),pub:m.live?pubOf(m):undefined});
       const cur=db.matches[m.id];
       if(r.conflict){db.matches[m.id]=Object.assign(r.sheet,{synced:true});toast('Une autre tablette saisit ce match : sa version est reprise');render()}
       else if(cur&&cur.updated===sent){delete cur.dirty;cur.synced=true}
@@ -307,6 +307,39 @@ async function pull(){
     if(net!=='sync')setNet('ok');
     if(view==='home'||(view==='live'&&M()&&!mine(M())))render();
   }catch(e){if(net!=='sync')setNet(netErr(e))}
+}
+/* ---- Version publique (page /live) : prénom + numéro, rien de privé ---- */
+function lab(id){const p=P(id);return p.num?`${p.name} #${p.num}`:p.name}
+const PUBK={'1B':'simple','2B':'double','3B':'triple','HR':'circuit','BB':'but sur balles','HBP':'touché','E':'sur erreur','FC':'choix défensif','K':'retrait sur prises','GO':'retrait au sol','FO':'retrait en l’air','SAC':'sacrifice'};
+function pubOf(m){
+  const s=replay(m),feed=[];
+  s.log.forEach((e,i)=>{
+    const n=i*8;
+    if(e.t==='pa'){
+      feed.push({n,k:e.res,txt:`${lab(e.id)} · ${PUBK[e.res]}`,who:lab(e.id),inn:e.inn});
+      (e.runs||[]).forEach((r,j)=>feed.push({n:n+1+j,k:'RUN',txt:r===e.id?`Point · ${lab(r)} marque`:`Point · ${lab(r)} marque sur le ${PUBK[e.res]} de ${nm(e.id)}`,who:lab(r),inn:e.inn}));
+    }else if(e.t==='run'){
+      if(e.a==='sb')feed.push({n,k:e.to>=3?'RUN':'SB',txt:e.to>=3?`Point · ${lab(e.id)} vole le marbre`:`${lab(e.id)} · vol de la ${['','2e','3e'][e.to]}`,who:lab(e.id),to:e.to,inn:e.inn});
+      else if(e.a==='cs')feed.push({n,k:'OUT',txt:`${lab(e.id)} · retiré en tentative de vol`,inn:e.inn});
+      else if(e.a==='out')feed.push({n,k:'OUT',txt:`${lab(e.id)} · retiré sur base`,inn:e.inn});
+      else if(e.to>=3)feed.push({n,k:'RUN',txt:`Point · ${lab(e.id)} marque`,who:lab(e.id),inn:e.inn});
+      else feed.push({n,k:'ADV',txt:`${lab(e.id)} · avance en ${['','2e','3e'][e.to]}`,inn:e.inn});
+    }else if(e.t==='wp'){
+      e.moved.forEach(([id,to],j)=>feed.push({n:n+j,k:to>=3?'RUN':'ADV',txt:to>=3?`Point · ${lab(id)} marque`:`${lab(id)} · avance en ${['','2e','3e'][to]}`,who:lab(id),inn:e.inn}));
+    }else if(e.t==='dp'&&e.kind==='K')feed.push({n,k:'KDEF',txt:`Retrait sur prises par ${lab(e.id)}`,who:lab(e.id),inn:e.inn});
+    else if(e.t==='pch')feed.push({n,k:'INFO',txt:`Au monticule : ${lab(e.id)}`,inn:e.inn});
+    else if(e.t==='sub')feed.push({n,k:'INFO',txt:`Changement : ${lab(e.id)} remplace ${lab(e.old)}`,inn:e.inn});
+  });
+  const id=s.lineup[s.bat],st=s.st[id]||{},extra=[['d','double'],['t','triple'],['hr','circuit']].filter(([k])=>st[k]).map(([k,w])=>`${st[k]} ${w}${st[k]>1?'s':''}`);
+  const att=s.half==='att'&&!s.over;
+  const rows=s.over?recapRows(m,s).filter(r=>r.pa>0).map(r=>[lab(r.id),r.h,r.ab,r.r,r.rbi,r.hr,r.bb,r.sb]):[];
+  return {opp:m.opp,date:m.date,home:!!m.home,first:s.first,over:s.over,inn:s.inn,half:s.half,att,outs:s.o,
+    count:att&&showCount()?[s.b,s.s]:null,
+    bases:att?s.B.map(x=>x?lab(x):null):[null,null,null],
+    batter:att?lab(id):null,batterLine:att?(st.pa?`${st.h} sur ${st.ab}${extra.length?', '+extra.join(', '):''}`:'1re présence'):null,
+    next:att?lab(s.lineup[(s.bat+1)%s.lineup.length]):null,
+    pitcher:!att&&s.pitcher?lab(s.pitcher):null,
+    us:s.us,them:s.opp,feed:feed.slice(-30).reverse(),rows};
 }
 function mapRoster(r){
   const cnt={};r.forEach(p=>{const k=(p.prenom||'').trim();if(k)cnt[k]=(cnt[k]||0)+1});
@@ -415,7 +448,8 @@ function liveV(){
   else if(!m.first&&!m.events.length)body=firstV(m);
   else body=s.over?overV(s):(s.half==='att'?attV(m,s):defV(m,s));
   const ro=!mine(m)?`<div class="ro" style="margin-top:12px"><div><b>Lecture seule</b><div class="muted" style="font-size:13px">Saisi sur une autre tablette${m.savedBy?' ('+esc(m.savedBy)+')':''} · mis à jour à ${new Date(m.updated||0).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</div></div><button class="btn small" data-a="take">Prendre la main</button></div>`:'';
-  return head+`<div class="row" style="justify-content:flex-end;margin-top:8px">${netV()}</div>`+ro+`<div class="stack" style="margin-top:12px">${body}</div>`+navV();
+  const liveBtn=mine(m)?`<button class="btn small" data-a="live" style="${m.live?'background:#b8322a;color:#fff;border-color:#b8322a':''}">${m.live?'● Diffusion live : ON':'Diffusion live : OFF'}</button>`:(m.live?'<span class="pill" style="background:#b8322a;color:#fff">● En direct</span>':'');
+  return head+`<div class="row" style="justify-content:space-between;margin-top:8px">${liveBtn}${netV()}</div>`+ro+`<div class="stack" style="margin-top:12px">${body}</div>`+navV();
 }
 function navV(){
   const ic={
@@ -630,6 +664,10 @@ document.addEventListener('click',ev=>{
   const MUT=['p','pa','r','runner','sub','subsheet','pch','pchsheet','pt','opp','endhalf','fin','undo','note','notetxt','dp','der','dersheet','cat','catsheet','first'];
   if(view==='live'&&m&&!mine(m)&&MUT.includes(a)){toast('Lecture seule · touche « Prendre la main » pour saisir');return}
   switch(a){
+    case'live':
+      if(!m.live){sheet(`<h3>Diffuser ce match en direct ?</h3><p style="margin:0">Le score et les actions seront visibles sans connexion sur <b>${esc(location.host)}/live</b> : prénom et numéro des joueurs uniquement. Les notes, lancers et erreurs restent privés.</p><button class="btn primary" data-a="liveon">Activer la diffusion</button><button class="btn" data-a="close">Annuler</button>`);break}
+      m.live=false;touch(m);render();toast('Diffusion arrêtée');break;
+    case'liveon':m.live=true;touch(m);close();render();toast('Match en direct sur /live');break;
     case'take':sheet(`<h3>Prendre la main ?</h3><p class="muted" style="margin:0">Tu deviens la personne qui saisit ce match. L’autre tablette passera en lecture seule à sa prochaine synchro. À faire seulement si elle ne saisit plus.</p><button class="btn primary" data-a="takeok">Prendre la main</button><button class="btn" data-a="close">Annuler</button>`);break;
     case'takeok':m.device=db.device;touch(m);close();render();toast('Tu saisis ce match');break;
     case'pushres':pushResults();break;

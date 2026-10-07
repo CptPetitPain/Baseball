@@ -9,3 +9,8 @@
   for = "/match/*"
   [headers.values]
     Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/compo/*"
+  [headers.values]
+    Cache-Control = "no-cache"

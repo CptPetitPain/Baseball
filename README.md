@@ -91,6 +91,30 @@ Fichiers : `public/match/` (page, manifest, service worker, icônes) et les acti
 `getScoresheets`, `saveScoresheet`, `deleteScoresheet`, `setInnings` dans
 `netlify/functions/api.js` (toutes réservées au staff, vérifiées côté serveur).
 
+## Compo et changements (`/compo/`)
+
+Page pensée pour l'ordinateur (marche aussi sur mobile) : `https://ton-site.netlify.app/compo/`,
+onglet **Compo & changements** côté staff.
+
+- Glisser-déposer des joueurs sur le terrain et dans l'ordre des frappeurs, DH, changements
+  prévus, vue avant/après, 2 matchs par jour, export de l'image PNG.
+- L'effectif est celui du club (tu peux ajouter un invité juste pour cette page).
+- « Envoyer la compo » remplit l'onglet Composition du match choisi ; la feuille de match la
+  reprend ensuite toute seule.
+- La compo en cours d'édition (et les changements prévus) reste sur l'ordinateur utilisé.
+
+## Match en direct (`/live`)
+
+Page publique, sans connexion, à partager aux familles : `https://ton-site.netlify.app/live`
+
+- Rien n'est diffusé tant que le bouton « Diffusion live » n'est pas activé sur la feuille de match.
+- Affiche score, manche, retraits, coureurs, frappeur, score par manche, dernières actions et
+  des animations (coups sûrs, circuits, vols, points, retraits sur prises de notre lanceur).
+- Prénom + numéro uniquement. Pas de notes sur l'adversaire, pas de compte de lancers, pas
+  d'erreurs défensives nominatives.
+- Fonction `netlify/functions/live.js` (route `/api/live`) : réponse mise en cache 15 s par le
+  CDN Netlify, donc environ 4 exécutions par minute quel que soit le nombre de spectateurs.
+
 ## Ce qui a changé par rapport à la version "artifact" Claude
 
 Cette version a une vraie séparation client / serveur :

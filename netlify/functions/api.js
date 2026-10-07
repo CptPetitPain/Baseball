@@ -705,7 +705,27 @@ async function applyMutation(store, state, session, action, body) {
 
 const SHEET_PREFIX = "scoresheet/";
 const SHEET_MAX_BYTES = 300 * 1024;
-const SHEET_FIELDS = ["id", "opp", "date", "home", "first", "lineup", "pitcher", "catcher", "dh", "events", "names", "created", "updated", "linkedMatchId", "device"];
+const SHEET_FIELDS = ["id", "opp", "date", "home", "first", "lineup", "pitcher", "catcher", "dh", "events", "names", "created", "updated", "linkedMatchId", "device", "live"];
+const LIVE_PREFIX = "live/";
+
+/* Version publique d'un match (page /live, sans connexion). La tablette envoie
+   un résumé déjà filtré (prénom + numéro, pas de notes, pas de lancers) ; on ne
+   garde ici que des valeurs simples et de taille limitée. */
+function cleanPublic(v, depth = 0) {
+  if (depth > 5) return null;
+  if (v === null || typeof v === "boolean") return v;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") return v.slice(0, 160);
+  if (Array.isArray(v)) return v.slice(0, 60).map((x) => cleanPublic(x, depth + 1));
+  if (typeof v === "object") {
+    const out = {};
+    Object.keys(v).slice(0, 40).forEach((k) => {
+      if (/^[a-zA-Z0-9_]{1,24}$/.test(k)) out[k] = cleanPublic(v[k], depth + 1);
+    });
+    return out;
+  }
+  return null;
+}
 
 function cleanSheet(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -748,6 +768,15 @@ async function handleScoresheet(store, state, session, action, body) {
     }
     sheet.savedBy = session.username;
     await store.set(key, JSON.stringify(sheet));
+    if (sheet.live && body.pub && typeof body.pub === "object") {
+      const pub = cleanPublic(body.pub);
+      pub.id = sheet.id;
+      pub.updated = Date.now();
+      const raw = JSON.stringify(pub);
+      if (raw.length <= 60 * 1024) await store.set(LIVE_PREFIX + sheet.id, raw);
+    } else if (!sheet.live) {
+      await store.delete(LIVE_PREFIX + sheet.id);
+    }
     return ok({ saved: true, updated: sheet.updated });
   }
 
@@ -755,6 +784,7 @@ async function handleScoresheet(store, state, session, action, body) {
     const id = String(body.sheetId || "");
     if (!/^[a-z0-9]{4,24}$/.test(id)) return fail(400, "Feuille introuvable.");
     await store.delete(SHEET_PREFIX + id);
+    await store.delete(LIVE_PREFIX + id);
     return ok({ deleted: true });
   }
 

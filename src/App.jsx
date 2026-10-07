@@ -547,6 +547,9 @@ export default function DragonsApp() {
                 >
                   Ma présence
                 </button>
+                <a className="tsw" href="/compo/" style={{ textDecoration: "none" }}>
+                  Compo &amp; changements
+                </a>
                 <a className="tsw" href="/match/" style={{ textDecoration: "none" }}>
                   Feuille de match
                 </a>
