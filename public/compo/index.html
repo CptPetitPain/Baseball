@@ -41,6 +41,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--sel);outline-of
 .chip.st-start{--st:var(--st-start)} .chip.st-out{--st:var(--st-out)} .chip.st-in{--st:var(--st-in)}
 .chip.st-bench{background:var(--chip);border-style:dashed;color:var(--muted)}
 .chip.pr-absent{opacity:.45;text-decoration:line-through}
+.chip.manage{cursor:pointer;font:inherit;font-weight:600}
+.chip .x-hide{margin-left:4px;color:var(--accent);font-weight:700}
+.hiddenlist{border-top:1px dashed var(--line);padding-top:10px}
 .pq{font-family:var(--cond);font-size:11px;font-weight:700;padding:2px 5px;border-radius:4px;line-height:1}
 .pq.ok{background:var(--st-start);color:#fff}.pq.res{background:var(--st-out);color:#fff}.pq.abs{background:var(--st-bench);color:#fff}.pq.no{background:var(--line);color:var(--ink)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
@@ -147,6 +150,7 @@ textarea.copy{position:fixed;opacity:0;pointer-events:none}
   <section class="panel">
     <div class="panel-head">
       <h2>Effectif</h2>
+      <div class="btns"><button type="button" id="manageBtn">Masquer des joueurs</button><button type="button" id="hiddenBtn" hidden></button></div>
       <form class="add" id="addForm">
         <input id="newName" placeholder="Ajouter un joueur" autocomplete="off">
         <button type="submit">Ajouter</button>
@@ -154,6 +158,7 @@ textarea.copy{position:fixed;opacity:0;pointer-events:none}
     </div>
     <div class="legend" id="legend"></div>
     <div class="roster" id="roster" data-drop="roster"></div>
+    <div class="roster hiddenlist" id="hiddenList" hidden></div>
     <div class="hint" id="hint"></div>
   </section>
 
@@ -238,6 +243,9 @@ const TOKEN_KEY = 'dragons-session-token';
 
 let S = load() || {players:[], extra:[]};
 if(!Array.isArray(S.extra)) S.extra = [];
+if(!Array.isArray(S.hidden)) S.hidden = [];
+if(!S.alias || typeof S.alias!=='object') S.alias = {};
+let manage = false, showHidden = false;
 // Deux matchs par jour : l'effectif est commun, la compo est propre à chaque match
 const GAME_KEYS = ['field','order','subs','dh','match'];
 if(!Array.isArray(S.games)){ const g0 = {}; GAME_KEYS.forEach(k => { g0[k] = S[k]; delete S[k]; }); S.games = [g0, {}]; }
@@ -328,17 +336,26 @@ function render(){
   const A = after(), inAfter = n => Object.values(A.F).includes(n) || A.O.includes(n);
   const status = n => { const st = !!(posOf(n) || batOf(n)); return st ? (inAfter(n) ? 'start' : 'out') : (inAfter(n) ? 'in' : 'bench'); };
   const ST = {start:['Titulaire',0], out:['Titulaire qui sort',1], in:['Entre en jeu',2], bench:['Ne joue pas',3]};
-  const counts = {start:0,out:0,in:0,bench:0}; S.players.forEach(n => counts[status(n)]++);
+  const shown = n => !S.hidden.includes(n) || posOf(n) || batOf(n) || inAfter(n) || presOf(n)==='present' || presOf(n)==='reserve';
+  const visible = S.players.filter(shown), masked = S.players.filter(n => !shown(n));
+  const counts = {start:0,out:0,in:0,bench:0}; visible.forEach(n => counts[status(n)]++);
   $('legend').innerHTML = Object.keys(ST).map(k => `<span><i style="background:var(--st-${k})"></i>${ST[k][0]} <b>${counts[k]}</b></span>`).join('')
     + ($('calMatch').value ? `<span style="flex-basis:100%">Présences du match choisi : <span class="pq ok">✓</span> présent · <span class="pq res">rés.</span> sous réserve · <span class="pq no">?</span> sans réponse · <span class="pq abs">abs.</span> absent</span>` : '');
   const PR = {present:0, reserve:1, '':2, absent:3};
-  const sorted = [...S.players].sort((a,b) => (ST[status(a)][1] - ST[status(b)][1]) || (PR[presOf(a)] - PR[presOf(b)]) || a.localeCompare(b,'fr'));
+  const sorted = [...visible].sort((a,b) => (ST[status(a)][1] - ST[status(b)][1]) || (PR[presOf(a)] - PR[presOf(b)]) || a.localeCompare(b,'fr'));
   $('roster').innerHTML = sorted.map(n => {
     const p = posOf(n), b = batOf(n), stt = status(n);
     const sel = same(selected,{type:'roster',id:n}) ? ' selected' : '';
     const pr = presOf(n), prTag = !$('calMatch').value || !CLUB.byName[n] ? '' : pr==='present' ? '<span class="pq ok">✓</span>' : pr==='reserve' ? '<span class="pq res">rés.</span>' : pr==='absent' ? '<span class="pq abs">abs.</span>' : '<span class="pq no">?</span>';
+    if(manage) return `<button type="button" class="chip st-${stt} manage" data-hide="${esc(n)}" title="Masquer ${esc(n)}">${esc(n)}<span class="x-hide" aria-hidden="true">✕</span></button>`;
     return `<span class="chip st-${stt}${sel}${pr==='absent'?' pr-absent':''}" title="${ST[stt][0]}${pr?' · '+({present:'présent',reserve:'sous réserve',absent:'absent'})[pr]:''}" data-src="roster:${esc(n)}">${prTag}${esc(n)}<span class="tags">${p?`<span class="tag">${p}</span>`:''}${b?`<span class="tag bat">${b}</span>`:''}</span></span>`;
   }).join('');
+  $('manageBtn').textContent = manage ? 'Terminé' : 'Masquer des joueurs';
+  $('manageBtn').classList.toggle('primary', manage);
+  $('hiddenBtn').hidden = !masked.length;
+  $('hiddenBtn').textContent = (showHidden ? '▾ ' : '▸ ') + `Masqués (${masked.length})`;
+  $('hiddenList').hidden = !(showHidden && masked.length);
+  $('hiddenList').innerHTML = masked.length ? `<span class="hint" style="flex-basis:100%">Touche un joueur pour le réafficher. Un joueur masqué réapparaît tout seul s'il se met présent ou sous réserve sur le match choisi.</span>` + masked.map(n => `<button type="button" class="chip st-bench" data-unhide="${esc(n)}">${esc(n)} ↺</button>`).join('') : '';
   // field
   const t = $('dhToggle'); t.textContent = S.dh ? 'Retirer le DH' : 'Ajouter un DH'; t.setAttribute('aria-pressed', S.dh ? 'true' : 'false'); t.classList.toggle('primary', !!S.dh);
   const ap = view==='apres', {F, O} = cur();
@@ -398,7 +415,7 @@ function render(){
     const n = nameOf(selected);
     let html = `<span><b>${esc(n)}</b> sélectionné — touche une position ou un rang.</span>`;
     if(selected.type!=='roster') html += `<button type="button" data-act="unassign">Retirer de cette case</button>`;
-    else html += `<button type="button" data-act="delete">Supprimer de l'effectif</button>`;
+    else html += `<button type="button" data-act="rename">Renommer</button>` + (S.extra.includes(n) ? `<button type="button" data-act="delete">Supprimer de l'effectif</button>` : `<button type="button" data-act="hide">Masquer de l'effectif</button>`);
     html += `<button type="button" data-act="cancel">Annuler</button>`;
     h.innerHTML = html;
   } else h.textContent = '';
@@ -470,9 +487,16 @@ $('hint').addEventListener('click', e => {
   const a = e.target.dataset.act; if(!a || !selected) return;
   if(a==='cancel'){ selected=null; render(); }
   if(a==='unassign'){ const s=selected; selected=null; apply(s,{type:'roster'}); }
+  if(a==='hide'){ const n = selected.id; selected = null; hidePlayer(n); return; }
+  if(a==='rename'){
+    const n = selected.id;
+    $('hint').innerHTML = `<form id="renameForm" class="add"><input id="renameInput" value="${esc(n)}" autocomplete="off" aria-label="Nouveau nom"><button type="submit" class="primary">Renommer</button><button type="button" data-act="cancel">Annuler</button></form>`;
+    const i = $('renameInput'); i.focus(); i.select();
+    $('renameForm').onsubmit = ev => { ev.preventDefault(); const v = i.value.trim(); selected = null; renamePlayer(n, v); };
+    return;
+  }
   if(a==='delete'){
     const n = selected.id;
-    if(!S.extra.includes(n)){ toast("Joueur du club : à gérer dans l'onglet Suivi de l'appli"); return; }
     selected=null;
     S.extra = S.extra.filter(p => p!==n);
     S.players = S.players.filter(p => p!==n);
@@ -482,6 +506,31 @@ $('hint').addEventListener('click', e => {
   }
 });
 
+function hidePlayer(n){
+  if(posOf(n) || batOf(n)){ toast(`${n} est dans la compo : retire-le d'abord du terrain et de l'ordre`); render(); return; }
+  if(!S.hidden.includes(n)) S.hidden.push(n);
+  save(); render(); toast(`${n} masqué`);
+}
+function renamePlayer(oldN, newN){
+  if(!newN || newN === oldN){ render(); return; }
+  if(S.players.includes(newN)){ toast('Ce nom existe déjà dans l\'effectif'); render(); return; }
+  const swap = x => x === oldN ? newN : x;
+  S.games.forEach(g => {
+    if(g.field) for(const k in g.field) g.field[k] = swap(g.field[k]);
+    if(Array.isArray(g.order)) g.order = g.order.map(swap);
+    if(Array.isArray(g.subs)) g.subs.forEach(sb => ['out','in','player'].forEach(f => { if(sb[f]) sb[f] = swap(sb[f]); }));
+  });
+  S.players = S.players.map(swap); S.extra = S.extra.map(swap); S.hidden = S.hidden.map(swap);
+  if(Array.isArray(S.club)) S.club = S.club.map(swap);
+  // joueur du club : on garde le lien avec sa fiche (envoi de la compo, présences)
+  const orig = Object.keys(S.alias).find(k => S.alias[k] === oldN) || oldN;
+  if(CLUB.byName[oldN]){ CLUB.byName[newN] = CLUB.byName[oldN]; delete CLUB.byName[oldN]; S.alias[orig] = newN; if(S.clubMap) S.clubMap = CLUB.byName; }
+  save(); render(); toast(`Renommé en ${newN}`);
+}
+$('manageBtn').onclick = () => { manage = !manage; selected = null; render(); };
+$('hiddenBtn').onclick = () => { showHidden = !showHidden; render(); };
+$('roster').addEventListener('click', e => { const b = e.target.closest('[data-hide]'); if(b) hidePlayer(b.dataset.hide); });
+$('hiddenList').addEventListener('click', e => { const b = e.target.closest('[data-unhide]'); if(!b) return; S.hidden = S.hidden.filter(x => x !== b.dataset.unhide); save(); render(); });
 $('addForm').addEventListener('submit', e => {
   e.preventDefault();
   const v = $('newName').value.trim();
@@ -723,7 +772,9 @@ async function boot(){
     const r = await api({action:'getState'});
     if(!r.session || !['coach','owner'].includes(r.session.role)){ gate(); return; }
     $('who').textContent = r.session.username;
-    CLUB.byName = S.clubMap = clubNames(r.state.roster || []);
+    const raw = clubNames(r.state.roster || []), byName = {};
+    Object.entries(raw).forEach(([n, id]) => { byName[S.alias[n] || n] = id; });
+    CLUB.byName = S.clubMap = byName;
     CLUB.presence = r.state.presence || {};
     const cs = r.state.currentSeason;
     CLUB.matches = (r.state.matches || []).filter(m => !m.cancelled && (!cs || (m.season||cs) === cs));
