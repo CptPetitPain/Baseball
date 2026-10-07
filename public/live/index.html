@@ -109,8 +109,8 @@ async function fetchLive(){
   render();
   const g=games.find(x=>x.id===cur);
   if(g)queueNew(g);
-  if(g&&g.over)return; // match terminé : plus aucun appel
-  schedule(POLL*(fails>3?2:1));
+  // Match terminé : on ne vérifie plus qu'une fois par minute (nouveau live ou fin des 15 min)
+  schedule(g&&g.over?60000:POLL*(fails>3?2:1));
 }
 function schedule(ms){clearTimeout(timer);timer=setTimeout(()=>{if(document.visibilityState==='visible')fetchLive();else schedule(ms)},ms)}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-lastFetch>POLL)fetchLive()});
@@ -128,6 +128,7 @@ function diamond(b){
 
 function render(){
   const app=$('app'),g=games.find(x=>x.id===cur);
+  if(g&&g.over){renderFinal(app,g);return}
   if(!g){app.innerHTML=`<div class="top"><div class="brand"><div class="logo">DR</div>Dragons de Ronchin</div></div><div class="empty"><h1>Pas de match en direct</h1>Reviens pendant le prochain match des Dragons : le score s’affichera ici tout seul.</div>`;return}
   const us=sum(g.us),them=sum(g.them),inns=Math.max(7,g.inn||1);
   const ourFirst=g.first==='att';
@@ -163,6 +164,27 @@ function render(){
   <div class="feed">${(g.feed||[]).slice(0,12).map(f=>{const run=f.k==='RUN',dim=['K','GO','FO','OUT','FC','SAC'].includes(f.k);const t=esc(f.txt);
     return `<div class="it ${run?'run':''} ${dim?'dim':''} ${fresh.has(g.id+':'+f.n)?'new':''}">${run?t.replace(/^Point/,'<b>Point</b>'):t}</div>`}).join('')||'<div class="it dim">Le match va commencer.</div>'}</div>
   <div class="foot">Mis à jour ${ago(g.updated)} · ${esc(location.host)}/live</div>`;
+}
+/* Fin de match : l'image du score, visible 15 min, à enregistrer ou partager */
+let finalImg={key:null,url:null,blob:null};
+function renderFinal(app,g){
+  const key=g.id+':'+g.updated,d={opp:g.opp,date:g.date,us:g.us,them:g.them,inn:g.inn,first:g.first,home:g.home};
+  if(finalImg.key!==key&&window.DragonsScorecard){
+    finalImg={key,url:null,blob:null};
+    DragonsScorecard.draw(d).then(c=>c.toBlob(b=>{if(finalImg.key!==key)return;finalImg.blob=b;finalImg.url=URL.createObjectURL(b);render()},'image/png'));
+  }
+  const until=new Date((g.updated||Date.now())+15*60000).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  app.innerHTML=`<div class="top"><div class="brand"><div class="logo">DR</div>Dragons de Ronchin</div><span class="badge done"><i></i>Terminé</span></div>
+  <div class="card" style="padding:10px">${finalImg.url?`<img src="${finalImg.url}" alt="Score final : Dragons ${sum(g.us)}, ${esc(g.opp)} ${sum(g.them)}" style="display:block;width:100%;border-radius:10px">`:`<div class="empty">Préparation de l’image…</div>`}</div>
+  <button data-share="1" style="margin-top:12px;width:100%;font:600 16px var(--f);background:var(--gold);color:#12280f;border:0;border-radius:12px;padding:14px;cursor:pointer">Enregistrer / partager l’image</button>
+  <div class="foot">Sur téléphone, un appui long sur l’image marche aussi · visible jusqu’à ${until}</div>`;
+}
+async function shareFinal(){
+  const g=games.find(x=>x.id===cur);if(!finalImg.blob||!g)return;
+  const name=`dragons-${(g.opp||'match').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase()}.png`;
+  const file=new File([finalImg.blob],name,{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:'Dragons de Ronchin'});return}catch(e){if(e&&e.name==='AbortError')return}}
+  const a=document.createElement('a');a.href=finalImg.url;a.download=name;document.body.appendChild(a);a.click();a.remove();
 }
 function fmtName(n){const m=/^(.*) (#\d+)$/.exec(n);return m?`${esc(m[1])} <span>${esc(m[2])}</span>`:esc(n)}
 function shortOpp(o){return String(o||'Adversaire').split(' ').filter(w=>!/^(de|du|des|la|le|les|d’|l’)$/i.test(w)).slice(-1)[0]||o}
@@ -209,6 +231,7 @@ function next(){
 function closePop(){clearTimeout(ptm);const c=document.querySelector('.pc');if(!c){next();return}c.classList.add('out');setTimeout(()=>{$('layer').innerHTML='';next()},300)}
 $('layer').addEventListener('click',closePop);
 document.addEventListener('click',e=>{const b=e.target.closest('[data-g]');if(b){cur=b.dataset.g;render()}
+  if(e.target.closest('[data-share]'))shareFinal();
   if(e.target.closest('[data-img]')){const g=games.find(x=>x.id===cur);if(g&&window.DragonsScorecard)DragonsScorecard.show({opp:g.opp,date:g.date,us:g.us,them:g.them,inn:g.inn,first:g.first,home:g.home})}});
 setInterval(()=>{const f=document.querySelector('.foot');const g=games.find(x=>x.id===cur);if(f&&g)f.textContent=`Mis à jour ${ago(g.updated)} · ${location.host}/live`},5000);
 fetchLive();

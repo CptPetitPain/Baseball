@@ -7,7 +7,7 @@ import { getStore } from "@netlify/blobs";
 
 const LIVE_PREFIX = "live/";
 const MAX_AGE_MS = 12 * 60 * 60 * 1000; // un match en cours reste visible 12 h après la dernière action
-const AFTER_END_MS = 30 * 60 * 1000; // un match terminé reste visible 30 min (écran final + image du score)
+const AFTER_END_MS = 15 * 60 * 1000; // un match terminé reste visible 15 min (image du score)
 
 function getBlobStore() {
   const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
@@ -36,6 +36,8 @@ export default async () => {
       } catch (e) { /* entrée illisible ignorée */ }
     }
     games.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    // Si un match est en cours, on n'affiche que lui (l'image d'un match fini disparaît).
+    if (games.some((g) => !g.over)) games.splice(0, games.length, ...games.filter((g) => !g.over));
     return new Response(JSON.stringify({ games: games.slice(0, 3), now: Date.now() }), { status: 200, headers });
   } catch (e) {
     return new Response(JSON.stringify({ games: [], error: "indisponible" }), {

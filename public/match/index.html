@@ -669,7 +669,8 @@ document.addEventListener('click',ev=>{
   switch(a){
     case'live':
       if(!m.live){sheet(`<h3>Diffuser ce match en direct ?</h3><p style="margin:0">Le score et les actions seront visibles sans connexion sur <b>${esc(location.host)}/live</b> : prénom et numéro des joueurs uniquement. Les notes, lancers et erreurs restent privés.</p><button class="btn primary" data-a="liveon">Activer la diffusion</button><button class="btn" data-a="close">Annuler</button>`);break}
-      m.live=false;touch(m);render();toast('Diffusion arrêtée');break;
+      sheet(`<h3>Couper la diffusion ?</h3><p style="margin:0">Le match <b>disparaît tout de suite</b> de /live, sans image de fin. Pratique pour annuler un test.</p><p class="muted" style="margin:0">Pour un vrai match, utilise plutôt « Terminer le match » en laissant la diffusion active : l’image du score reste alors 15 min sur /live.</p><button class="btn" style="background:var(--out);color:#fff;border-color:var(--out)" data-a="liveoff">Couper et retirer de /live</button><button class="btn" data-a="close">Garder la diffusion</button>`);break;
+    case'liveoff':m.live=false;touch(m);close();render();toast('Retiré de /live');break;
     case'liveon':m.live=true;touch(m);close();render();toast('Match en direct sur /live');break;
     case'take':sheet(`<h3>Prendre la main ?</h3><p class="muted" style="margin:0">Tu deviens la personne qui saisit ce match. L’autre tablette passera en lecture seule à sa prochaine synchro. À faire seulement si elle ne saisit plus.</p><button class="btn primary" data-a="takeok">Prendre la main</button><button class="btn" data-a="close">Annuler</button>`);break;
     case'takeok':m.device=db.device;touch(m);close();render();toast('Tu saisis ce match');break;

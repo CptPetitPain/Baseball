@@ -137,7 +137,7 @@ Page publique, sans connexion, à partager aux familles : `https://ton-site.netl
 - **Compo & changements** : quand un match est choisi, l'effectif affiche les présences
   (✓ / rés. / ? / abs.) et trie les présents en premier.
 - **Image du score** (feuille de match → Récap, et page /live en fin de match) : générée dans le
-  navigateur. Un match terminé reste 30 min sur /live puis disparaît.
+  navigateur. Un match terminé affiche cette image 15 min sur /live (sauf si un autre live démarre), puis disparaît. « Couper la diffusion » le retire tout de suite (tests).
 - **QR code** de la page live sur la feuille de match (bibliothèque locale
   `public/match/qrcode.js`, licence MIT, marche sans réseau).
 
