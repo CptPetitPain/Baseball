@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f2818">
+<meta name="theme-color" content="#0e1511">
 <title>Dragons de Ronchin · En direct</title>
 <meta name="description" content="Suivez en direct les matchs des Dragons de Ronchin.">
 <link rel="icon" href="/match/icon-192.png">
 <style>
 /* Une colonne type téléphone : tableau du score, losange, manches, fil d'actions. Fond vert du club, accents dorés. */
 :root{
-  --bg:#0f2818; --card:#173a22; --ink:#f1ead6; --muted:#9fbfa6; --faint:#7f9c86;
-  --gold:#d4af37; --red:#b8322a; --redsoft:#e0574d; --grass:#2d6b37; --grass2:#3f8a4a;
+  --bg:#0e1511; --card:#17211b; --ink:#e7efea; --muted:#9aada2; --faint:#6f8278;
+  --gold:#3fae74; --red:#b8322a; --redsoft:#e0574d; --grass:#2d6b37; --grass2:#3f8a4a;
   --f:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   color-scheme:dark;
 }
@@ -20,8 +20,8 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 var(--f)}
 body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 .wrap{max-width:440px;margin:0 auto;padding-inline:16px;padding-block:14px 28px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 2px 12px}
-.brand{display:flex;align-items:center;gap:8px;font-size:14px;color:#cfe0d2}
-.logo{width:32px;height:32px;border-radius:50%;background:var(--gold);color:#12280f;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px}
+.brand{display:flex;align-items:center;gap:8px;font-size:14px;color:#cfdcd4}
+.logo{width:32px;height:32px;border-radius:50%;background:var(--gold);color:#06130c;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px}
 .badge{display:inline-flex;align-items:center;gap:6px;background:var(--red);color:#fff;font-size:13px;font-weight:600;padding:4px 11px;border-radius:999px}
 .badge i{width:7px;height:7px;border-radius:50%;background:#fff;animation:blink 1.6s infinite}
 .badge.done{background:#3b4d40}.badge.done i{display:none}
@@ -58,14 +58,14 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 @keyframes slide{from{transform:translateY(-8px);opacity:0}}
 .foot{text-align:center;font-size:12px;color:var(--faint);margin-top:14px}
 .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
-.tabs button{font:inherit;font-size:13px;color:var(--ink);background:var(--card);border:1px solid #2b5236;border-radius:999px;padding:6px 12px;cursor:pointer}
-.tabs button.on{background:var(--gold);color:#12280f;border-color:var(--gold)}
+.tabs button{font:inherit;font-size:13px;color:var(--ink);background:var(--card);border:1px solid #2a3a31;border-radius:999px;padding:6px 12px;cursor:pointer}
+.tabs button.on{background:var(--gold);color:#06130c;border-color:var(--gold)}
 .empty{text-align:center;padding:40px 16px;color:var(--muted)}
 .empty h1{color:var(--ink);font-size:20px;margin:0 0 6px}
 .stats{margin-top:12px;font-size:13px}
 .stats table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 .stats th{color:var(--muted);font-weight:400;padding:4px 2px;text-align:center}
-.stats td{padding:6px 2px;text-align:center;border-top:1px solid #234a2e}
+.stats td{padding:6px 2px;text-align:center;border-top:1px solid #2a3a31}
 .stats .l{text-align:left}
 .final{text-align:center;font-size:15px;color:var(--gold);font-weight:600;margin-top:8px}
 /* pop-ups */
@@ -95,7 +95,7 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const G='#d4af37',C='#f1ead6',GR='#2d6b37';
+const G='#3fae74',C='#e7efea',GR='#2d6b37';
 let games=[],cur=null,seen={},lastFetch=0,fails=0,timer=null;
 const POLL=15000;
 
@@ -122,7 +122,7 @@ function diamond(b){
   const P=[[135,62],[80,14],[25,62]];
   const t=(i,x,y,anchor)=>b[i]?`<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="11" fill="${C}">${esc(b[i])}</text>`:'';
   return `<svg viewBox="0 -16 160 146" role="img" aria-label="Coureurs sur base"><path d="M80 120 L135 62 L80 14 L25 62 Z" fill="${GR}" stroke="#3f8a4a" stroke-width="2"/>
-  ${P.map(([x,y],i)=>`<rect x="${x-9}" y="${y-9}" width="18" height="18" transform="rotate(45 ${x} ${y})" fill="${b[i]?G:'#0f2818'}" stroke="#9fbfa6" stroke-width="2"/>`).join('')}
+  ${P.map(([x,y],i)=>`<rect x="${x-9}" y="${y-9}" width="18" height="18" transform="rotate(45 ${x} ${y})" fill="${b[i]?G:'#0e1511'}" stroke="#9aada2" stroke-width="2"/>`).join('')}
   <path d="M73 118 h14 v-5 l-7 -7 l-7 7 z" fill="${C}"/>${t(0,160,92,'end')}${t(1,80,-4,'middle')}${t(2,0,92,'start')}</svg>`;
 }
 
@@ -136,7 +136,7 @@ function render(){
   const tabs=games.length>1?`<div class="tabs">${games.map(x=>`<button class="${x.id===cur?'on':''}" data-g="${esc(x.id)}">Dragons – ${esc(x.opp)}</button>`).join('')}</div>`:'';
   let mid='';
   if(g.over){
-    mid=`<div class="card" style="margin-top:12px;text-align:center"><div class="final">${us>them?'Victoire des Dragons !':us<them?'Défaite':'Match nul'}</div><button data-img="1" style="margin-top:12px;font:600 15px var(--f);background:var(--gold);color:#12280f;border:0;border-radius:10px;padding:12px 18px;cursor:pointer">Image du score à partager</button></div>`+
+    mid=`<div class="card" style="margin-top:12px;text-align:center"><div class="final">${us>them?'Victoire des Dragons !':us<them?'Défaite':'Match nul'}</div><button data-img="1" style="margin-top:12px;font:600 15px var(--f);background:var(--gold);color:#06130c;border:0;border-radius:10px;padding:12px 18px;cursor:pointer">Image du score à partager</button></div>`+
       (g.rows&&g.rows.length?`<div class="card stats"><table><thead><tr><th class="l">Joueur</th><th>H/AB</th><th>R</th><th>RBI</th><th>HR</th><th>BB</th><th>SB</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td class="l">${esc(r[0])}</td><td>${+r[1]}/${+r[2]}</td><td>${+r[3]}</td><td>${+r[4]}</td><td>${+r[5]}</td><td>${+r[6]}</td><td>${+r[7]}</td></tr>`).join('')}</tbody></table></div>`:'');
   }else if(g.att){
     mid=`<div class="play"><div>${diamond(g.bases||[])}</div><div>
@@ -181,7 +181,7 @@ function renderFinal(app,g){
   const until=new Date((g.updated||Date.now())+15*60000).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
   app.innerHTML=`<div class="top"><div class="brand"><div class="logo">DR</div>Dragons de Ronchin</div><span class="badge done"><i></i>Terminé</span></div>
   <div class="card" style="padding:10px">${finalImg.url?`<img src="${finalImg.url}" alt="Score final : Dragons ${sum(g.us)}, ${esc(g.opp)} ${sum(g.them)}" style="display:block;width:100%;border-radius:10px">`:`<div class="empty">Préparation de l’image…</div>`}</div>
-  <button data-share="1" style="margin-top:12px;width:100%;font:600 16px var(--f);background:var(--gold);color:#12280f;border:0;border-radius:12px;padding:14px;cursor:pointer">Enregistrer / partager l’image</button>
+  <button data-share="1" style="margin-top:12px;width:100%;font:600 16px var(--f);background:var(--gold);color:#06130c;border:0;border-radius:12px;padding:14px;cursor:pointer">Enregistrer / partager l’image</button>
   <div class="foot">Sur téléphone, un appui long sur l’image marche aussi · visible jusqu’à ${until}</div>`;
 }
 async function shareFinal(){
@@ -196,14 +196,14 @@ function shortOpp(o){return String(o||'Adversaire').split(' ').filter(w=>!/^(de|
 
 /* ---------- Pop-ups ---------- */
 const fresh=new Set();
-const dia=(path,base)=>`<svg viewBox="0 0 160 120" width="170" height="128"><path d="M80 110 L135 60 L80 10 L25 60 Z" fill="${GR}" stroke="#3f8a4a" stroke-width="2"/>${[[135,60],[80,10],[25,60]].map(([x,y],i)=>`<rect x="${x-7}" y="${y-7}" width="14" height="14" transform="rotate(45 ${x} ${y})" fill="${i<base?G:'#0f2818'}" stroke="#9fbfa6" stroke-width="1.5"/>`).join('')}<path d="M74 108 h12 v-4 l-6 -6 l-6 6 z" fill="${C}"/><path d="${path}" fill="none" stroke="${G}" stroke-width="4" stroke-linecap="round" stroke-dasharray="300" stroke-dashoffset="300" style="animation:dash .9s .25s ease-out forwards"/></svg>`;
+const dia=(path,base)=>`<svg viewBox="0 0 160 120" width="170" height="128"><path d="M80 110 L135 60 L80 10 L25 60 Z" fill="${GR}" stroke="#3f8a4a" stroke-width="2"/>${[[135,60],[80,10],[25,60]].map(([x,y],i)=>`<rect x="${x-7}" y="${y-7}" width="14" height="14" transform="rotate(45 ${x} ${y})" fill="${i<base?G:'#0e1511'}" stroke="#9aada2" stroke-width="1.5"/>`).join('')}<path d="M74 108 h12 v-4 l-6 -6 l-6 6 z" fill="${C}"/><path d="${path}" fill="none" stroke="${G}" stroke-width="4" stroke-linecap="round" stroke-dasharray="300" stroke-dashoffset="300" style="animation:dash .9s .25s ease-out forwards"/></svg>`;
 const ball=(cx)=>`<circle cx="${cx}" cy="30" r="17" fill="#fff"/><path d="M${cx-10} 20 Q${cx} 30 ${cx-10} 40 M${cx+10} 20 Q${cx} 30 ${cx+10} 40" stroke="#b8322a" stroke-width="2" fill="none"/>`;
 const VIS={
   '1B':()=>dia('M80 104 L135 60',1),
   '2B':()=>dia('M80 104 L135 60 L80 10',2),
   '3B':()=>dia('M80 104 L135 60 L80 10 L25 60',3),
   'SB':f=>f.to===1?dia('M135 60 L80 10',2):dia('M80 10 L25 60',3),
-  'HR':()=>`<svg viewBox="0 0 220 120" width="230" height="125"><path d="M0 105 Q110 90 220 105" stroke="#3f8a4a" stroke-width="3" fill="none"/><rect x="150" y="62" width="70" height="8" fill="#9fbfa6"/><rect x="150" y="70" width="70" height="35" fill="${GR}"/><path d="M20 100 Q110 -30 205 40" fill="none" stroke="${G}" stroke-width="2" stroke-dasharray="4 5" opacity=".7"/><circle r="8" fill="#fff" style="offset-path:path('M20 100 Q110 -30 205 40');animation:arc 1.1s ease-out forwards"/></svg>`,
+  'HR':()=>`<svg viewBox="0 0 220 120" width="230" height="125"><path d="M0 105 Q110 90 220 105" stroke="#3f8a4a" stroke-width="3" fill="none"/><rect x="150" y="62" width="70" height="8" fill="#9aada2"/><rect x="150" y="70" width="70" height="35" fill="${GR}"/><path d="M20 100 Q110 -30 205 40" fill="none" stroke="${G}" stroke-width="2" stroke-dasharray="4 5" opacity=".7"/><circle r="8" fill="#fff" style="offset-path:path('M20 100 Q110 -30 205 40');animation:arc 1.1s ease-out forwards"/></svg>`,
   'BB':()=>`<svg viewBox="0 0 200 60" width="200" height="60">${[0,1,2,3].map(i=>`<g style="transform-origin:${30+i*46}px 30px;animation:pop .35s ${0.15+i*0.18}s both">${ball(30+i*46)}</g>`).join('')}</svg>`,
   'HBP':()=>`<svg viewBox="0 0 120 90" width="120" height="90" style="animation:shake .4s .3s 2"><circle cx="60" cy="45" r="30" fill="#fff"/><path d="M42 26 Q60 45 42 64 M78 26 Q60 45 78 64" stroke="#b8322a" stroke-width="3" fill="none"/><g style="transform-origin:95px 18px;animation:pop .3s .2s both"><path d="M88 6 L96 16 M100 4 L100 16 M108 10 L102 18" stroke="${G}" stroke-width="3" stroke-linecap="round"/></g></svg>`,
   'KDEF':()=>`<svg viewBox="0 0 160 90" width="160" height="90"><text x="80" y="76" text-anchor="middle" font-size="86" font-weight="600" fill="${G}" style="transform-origin:80px 45px;animation:pop .4s .1s both">K</text>${[0,1,2].map(i=>`<path d="M${30+i*44} 84 l22 0" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="60" style="animation:slash .25s ${0.45+i*0.15}s forwards"/>`).join('')}</svg>`,
@@ -229,7 +229,7 @@ function next(){
   showing=true;
   const sub=f.k==='KDEF'?'':(f.k==='RUN'?'Un point pour les Dragons':'');
   const who=f.k==='KDEF'?`par ${f.who||''}`:(f.who||'');
-  const conf=CONF.has(f.k)?Array.from({length:22},(_,i)=>`<span class="cf" style="left:${Math.random()*100}%;background:${['#d4af37','#b8322a','#f1ead6','#5cbf6b'][i%4]};animation-delay:${Math.random()*.5}s"></span>`).join(''):'';
+  const conf=CONF.has(f.k)?Array.from({length:22},(_,i)=>`<span class="cf" style="left:${Math.random()*100}%;background:${['#3fae74','#b8322a','#e7efea','#5cbf6b'][i%4]};animation-delay:${Math.random()*.5}s"></span>`).join(''):'';
   $('layer').innerHTML=`<div class="pp" role="status"><div class="pc">${conf}<div style="display:flex;justify-content:center">${VIS[f.k](f)}</div><div class="pt">${TITLE[f.k]}</div><div class="pw">${esc(who)}</div>${sub?`<div class="ps">${sub}</div>`:''}</div></div>`;
   ptm=setTimeout(closePop,2800);
 }

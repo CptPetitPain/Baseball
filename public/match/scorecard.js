@@ -2,7 +2,7 @@
    Tout est dessiné dans le navigateur : aucun coût côté serveur.
    d = { opp, date, us: {manche: points}, them: {...}, inn, first: 'att'|'def', home } */
 (function () {
-  const C = { bg: "#0f2818", card: "#173a22", line: "#2b5236", ink: "#f1ead6", muted: "#9fbfa6", gold: "#d4af37", red: "#b8322a" };
+  const C = { bg: "#0e1511", card: "#17211b", line: "#2a3a31", ink: "#e7efea", muted: "#9aada2", gold: "#3fae74", red: "#b8322a" };
   const FONT = "system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,sans-serif";
   const sum = (o) => Object.values(o || {}).reduce((a, b) => a + (+b || 0), 0);
 
@@ -87,13 +87,13 @@
     const url = URL.createObjectURL(blob);
     const el = document.createElement("div");
     el.style.cssText = "position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px";
-    el.innerHTML = `<div style="background:#173a22;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;align-items:center;max-width:100%;max-height:100%">
+    el.innerHTML = `<div style="background:#17211b;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;align-items:center;max-width:100%;max-height:100%">
       <img src="${url}" alt="Score final" style="max-width:min(420px,100%);max-height:62vh;border-radius:10px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-        <button data-sc="share" style="font:600 15px ${FONT};background:#d4af37;color:#12280f;border:0;border-radius:10px;padding:12px 16px">Enregistrer / partager</button>
-        <button data-sc="close" style="font:600 15px ${FONT};background:transparent;color:#f1ead6;border:1px solid #2b5236;border-radius:10px;padding:12px 16px">Fermer</button>
+        <button data-sc="share" style="font:600 15px ${FONT};background:#3fae74;color:#06130c;border:0;border-radius:10px;padding:12px 16px">Enregistrer / partager</button>
+        <button data-sc="close" style="font:600 15px ${FONT};background:transparent;color:#e7efea;border:1px solid #2a3a31;border-radius:10px;padding:12px 16px">Fermer</button>
       </div>
-      <div style="font:13px ${FONT};color:#9fbfa6;text-align:center">Sur téléphone, un appui long sur l’image marche aussi.</div></div>`;
+      <div style="font:13px ${FONT};color:#9aada2;text-align:center">Sur téléphone, un appui long sur l’image marche aussi.</div></div>`;
     (mount || document.body).appendChild(el);
     el.addEventListener("click", async (e) => {
       const a = e.target.closest("[data-sc]");

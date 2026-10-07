@@ -187,6 +187,7 @@ function matchDate(m) {
 
 /* Les joueurs voient la composition à partir de 2 jours avant le match. */
 const LINEUP_LEAD_MS = 2 * 24 * 60 * 60 * 1000;
+const LINEUP_IMG_PREFIX = "lineupimg/";
 function lineupVisibleToPlayers(m) {
   const d = matchDate(m);
   return Boolean(d) && Date.now() >= d.getTime() - LINEUP_LEAD_MS;
@@ -769,6 +770,14 @@ async function applyMutation(store, state, session, action, body) {
         publishedAt: Date.now(),
         publishedBy: actingUser,
       };
+      // Image de la compo (générée par la page Compo & changements), stockée à part
+      const img = body.image;
+      if (typeof img === "string" && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(img) && img.length <= 3 * 1024 * 1024) {
+        await store.set(LINEUP_IMG_PREFIX + matchId, img);
+        lineup.imageAt = lineup.publishedAt;
+      } else {
+        await store.delete(LINEUP_IMG_PREFIX + matchId);
+      }
       s = { ...s, lineups: { ...s.lineups, [matchId]: lineup } };
       s = logAction(s, actingUser, `a publié la composition de ${match.label}`);
       break;
@@ -1058,6 +1067,13 @@ export async function handler(event) {
     const session = await requireSession(store, token, state);
     if (!session) return fail(401, "Session invalide, reconnecte-toi.");
 
+    if (action === "getLineupImage") {
+      const match = state.matches.find((m) => m.id === body.matchId);
+      if (!match) return fail(404, "Match introuvable.");
+      if (!isStaffRole(session.role) && !lineupVisibleToPlayers(match)) return fail(403, "Composition pas encore publiée.");
+      const image = await store.get(LINEUP_IMG_PREFIX + match.id);
+      return ok({ image: image || null });
+    }
     if (["listBackups", "getBackup", "restoreBackup"].includes(action)) {
       return await handleBackup(store, state, session, action, body);
     }

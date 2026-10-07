@@ -5,8 +5,8 @@
   "scope": "/match/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f2818",
-  "theme_color": "#0f2818",
+  "background_color": "#0e1511",
+  "theme_color": "#0e1511",
   "lang": "fr",
   "icons": [
     { "src": "/match/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

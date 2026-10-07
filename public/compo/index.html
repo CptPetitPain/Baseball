@@ -4,25 +4,15 @@
 <style>
 /* Layout: effectif en haut, terrain à gauche + batting order à droite (empilés sur mobile) */
 :root{
-  --bg:#eef1ea; --surface:#ffffff; --ink:#18231c; --muted:#5d6b60; --line:#d3dacf;
-  --grass:#3f8a4a; --grass-2:#357a3f; --dirt:#c98a55; --chalk:#ffffff;
-  --accent:#b8322a; --accent-ink:#ffffff; --chip:#ffffff; --chip-ink:#18231c;
-  --slot-empty:rgba(255,255,255,.22); --sel:#f2c14e;
-  --st-start:#2f7d3b; --st-out:#c7661c; --st-in:#2c62b3; --st-bench:#8a948c;
+  /* Palette d'origine (version sombre) */
+  --bg:#111813; --surface:#1a231d; --ink:#e7ede6; --muted:#9aa89d; --line:#2c3a30;
+  --grass:#2d6b37; --grass-2:#275e30; --dirt:#9c6a40; --chalk:#f1f1ea;
+  --accent:#e0574d; --accent-ink:#ffffff; --chip:#243128; --chip-ink:#eef2ec;
+  --slot-empty:rgba(255,255,255,.12); --sel:#f2c14e;
+  --st-start:#5cbf6b; --st-out:#f09a4a; --st-in:#6fa0f0; --st-bench:#7d887f;
   --display:"Graduate", Georgia, serif; --body:"Barlow", system-ui, sans-serif; --cond:"Barlow Condensed", "Arial Narrow", sans-serif;
+  color-scheme:dark;
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#111813; --surface:#1a231d; --ink:#e7ede6; --muted:#9aa89d; --line:#2c3a30;
-  --grass:#2d6b37; --grass-2:#275e30; --dirt:#9c6a40; --chalk:#f1f1ea;
-  --accent:#e0574d; --accent-ink:#ffffff; --chip:#243128; --chip-ink:#eef2ec;
-  --slot-empty:rgba(255,255,255,.12); --sel:#f2c14e;
-  --st-start:#5cbf6b; --st-out:#f09a4a; --st-in:#6fa0f0; --st-bench:#7d887f; color-scheme:dark}}
-:root[data-theme="dark"]{
-  --bg:#111813; --surface:#1a231d; --ink:#e7ede6; --muted:#9aa89d; --line:#2c3a30;
-  --grass:#2d6b37; --grass-2:#275e30; --dirt:#9c6a40; --chalk:#f1f1ea;
-  --accent:#e0574d; --accent-ink:#ffffff; --chip:#243128; --chip-ink:#eef2ec;
-  --slot-empty:rgba(255,255,255,.12); --sel:#f2c14e;
-  --st-start:#5cbf6b; --st-out:#f09a4a; --st-in:#6fa0f0; --st-bench:#7d887f; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;-webkit-user-select:none;user-select:none}
 .wrap{max-width:1100px;margin:0 auto;padding-inline:16px;padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
@@ -45,7 +35,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--sel);outline-of
 .chip{touch-action:none;cursor:grab;display:inline-flex;align-items:center;gap:6px;background:var(--chip);color:var(--chip-ink);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-weight:600;font-size:15px;line-height:1}
 .chip .tags{display:inline-flex;gap:3px}
 .tag{font-family:var(--cond);font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:4px;background:var(--grass);color:#fff}
-.tag.bat{background:var(--accent)}
+.tag.bat{background:var(--accent);color:var(--accent-ink)}
 .chip::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--st);flex:none}
 .chip{--st:var(--st-bench);border-color:color-mix(in srgb,var(--st) 55%,var(--line));background:color-mix(in srgb,var(--st) 12%,var(--chip))}
 .chip.st-start{--st:var(--st-start)} .chip.st-out{--st:var(--st-out)} .chip.st-in{--st:var(--st-in)}
@@ -111,7 +101,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--sel);outline-of
 .slot.changed{box-shadow:0 0 0 3px var(--sel)}
 .slot.vacant{border-color:var(--accent);background:rgba(184,50,42,.35)}
 .row.changed{border-color:var(--sel);box-shadow:inset 3px 0 0 var(--sel)}
-.ghost{position:fixed;left:0;top:0;pointer-events:none;z-index:50;background:var(--accent);color:#fff;font-weight:700;padding:8px 14px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.3);transform:translate(-50%,-130%)}
+.ghost{position:fixed;left:0;top:0;pointer-events:none;z-index:50;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:8px 14px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.3);transform:translate(-50%,-130%)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-weight:600;z-index:60}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .toolbar .lbl{font-family:var(--cond);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
@@ -129,7 +119,7 @@ textarea.copy{position:fixed;opacity:0;pointer-events:none}
     <a href="/" style="font-family:var(--cond);font-weight:700;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:6px 10px;background:var(--surface)">‹ Appli Dragons</a>
     <span class="sub" id="who"></span>
   </div>
-  <div class="panel" id="gate" hidden><h2>Accès staff</h2><p style="margin:0">Connecte-toi d'abord dans l'appli Dragons avec ton compte staff, puis reviens sur cette page.</p><a href="/" class="primary" style="align-self:flex-start;background:var(--accent);color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-family:var(--cond);font-weight:700">Ouvrir l'appli</a></div>
+  <div class="panel" id="gate" hidden><h2>Accès staff</h2><p style="margin:0">Connecte-toi d'abord dans l'appli Dragons avec ton compte staff, puis reviens sur cette page.</p><a href="/" class="primary" style="align-self:flex-start;background:var(--accent);color:var(--accent-ink);padding:8px 14px;border-radius:6px;text-decoration:none;font-family:var(--cond);font-weight:700">Ouvrir l'appli</a></div>
   <header>
     <h1>Feuille de match <span>Dragons</span></h1>
     <div class="sub">Glisse un joueur sur une position ou un rang. Sur mobile : touche le joueur, puis la case.</div>
@@ -151,7 +141,7 @@ textarea.copy{position:fixed;opacity:0;pointer-events:none}
     <label for="calMatch" class="lbl">Envoyer vers l'appli</label>
     <select id="calMatch" style="font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);max-width:380px;flex:1 1 240px;min-width:0"></select>
     <button id="sendBtn" type="button">Envoyer la compo</button>
-    <span class="tabnote" id="sendNote">Publie terrain, ordre et changements prévus dans l'onglet Composition (visible par les joueurs 2 jours avant le match). La feuille de match la reprend.</span>
+    <span class="tabnote" id="sendNote">Publie l'image de la compo (terrain, ordre, changements prévus) dans l'onglet Composition (visible par les joueurs 2 jours avant le match). La feuille de match la reprend.</span>
   </div>
 
   <section class="panel">
@@ -714,7 +704,14 @@ $('sendBtn').onclick = async () => {
     const batting = S.order.slice(0,9).map(n => CLUB.byName[n] || '');
     const dh = S.dh && S.field.DH ? (CLUB.byName[S.field.DH] || null) : null;
     const subs = filledSubs().map(subText);
-    await api({action:'setLineup', matchId, defense, batting, dh, subs});
+    // L'image exacte de « Exporter en PNG » est publiée avec la compo
+    const cm = CLUB.matches.find(m => m.id === matchId) || {};
+    const keep = S.match;
+    if(!S.match) S.match = [cm.label, cm.opponent ? 'vs ' + cm.opponent : '', cm.date].filter(Boolean).join(' · ');
+    let image = null;
+    try{ image = (await drawSheet()).toDataURL('image/png'); }catch(e){}
+    S.match = keep;
+    await api({action:'setLineup', matchId, defense, batting, dh, subs, image});
     toast(unknown.length ? `Compo publiée (sans ${unknown.join(', ')} : pas dans l'effectif du club)` : 'Compo publiée dans l\'onglet Composition');
   }catch(e){ toast(e.message || 'Envoi impossible'); }
   btn.disabled = false; btn.textContent = 'Envoyer la compo';

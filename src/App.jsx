@@ -669,6 +669,10 @@ export default function DragonsApp() {
           <RelanceCard state={state} />
         )}
 
+        {session && screen === "roster" && isStaffRole(session.role) && (
+          <LiveLinkCard />
+        )}
+
         {session && screen === "roster" && (
           <PresenceRosterView state={state} />
         )}
@@ -719,7 +723,7 @@ export default function DragonsApp() {
         )}
 
         {session && screen === "composition" && (
-          <LineupView state={state} isStaff={isStaffRole(session.role)} />
+          <LineupView state={state} isStaff={isStaffRole(session.role)} token={authToken} />
         )}
 
         {session && screen === "matches" && isStaffRole(session.role) && (
@@ -1766,8 +1770,80 @@ function RelanceCard({ state }) {
         <input type="checkbox" checked={withReserve} onChange={(e) => setWithReserve(e.target.checked)} />
         Ajouter aussi les « sous réserve » à confirmer
       </label>
-      <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.2)", borderRadius: 8, padding: 10, margin: "0 0 10px", userSelect: "text" }}>{text}</pre>
+      <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(63, 174, 116,0.2)", borderRadius: 8, padding: 10, margin: "0 0 10px", userSelect: "text" }}>{text}</pre>
       <button className="btn-primary small" onClick={copy}>{copied ? "Copié ✓" : "Copier le message"}</button>
+    </div>
+  );
+}
+
+/* Lien et QR code de la page /live, à préparer avant le match et à envoyer sur WhatsApp. */
+function loadQrLib() {
+  if (window.qrcode) return Promise.resolve();
+  return new Promise((ok, ko) => {
+    const sc = document.createElement("script");
+    sc.src = "/match/qrcode.js"; sc.onload = ok; sc.onerror = ko;
+    document.head.appendChild(sc);
+  });
+}
+function LiveLinkCard() {
+  const url = window.location.origin + "/live";
+  const [svg, setSvg] = useState("");
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    loadQrLib().then(() => {
+      const q = window.qrcode(0, "M"); q.addData(url); q.make();
+      setSvg(q.createSvgTag({ cellSize: 6, margin: 0 }));
+    }).catch(() => setSvg(""));
+  }, []);
+  async function makePng() {
+    await loadQrLib();
+    const q = window.qrcode(0, "M"); q.addData(url); q.make();
+    const n = q.getModuleCount(), cell = Math.floor(560 / n), size = n * cell;
+    const W = 800, H = 1000, c = document.createElement("canvas"); c.width = W; c.height = H;
+    const x = c.getContext("2d");
+    x.fillStyle = "#0e1511"; x.fillRect(0, 0, W, H);
+    x.fillStyle = "#3fae74"; x.textAlign = "center"; x.font = "800 52px system-ui, sans-serif";
+    x.fillText("DRAGONS DE RONCHIN", W / 2, 95);
+    x.fillStyle = "#e7efea"; x.font = "500 34px system-ui, sans-serif";
+    x.fillText("Suivez le match en direct", W / 2, 150);
+    const ox = (W - size) / 2, oy = 200, pad = 28;
+    x.fillStyle = "#ffffff"; x.fillRect(ox - pad, oy - pad, size + pad * 2, size + pad * 2);
+    x.fillStyle = "#000000";
+    for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) x.fillRect(ox + k * cell, oy + r * cell, cell, cell);
+    x.fillStyle = "#3fae74"; x.font = "700 34px system-ui, sans-serif";
+    x.fillText(url.replace(/^https?:\/\//, ""), W / 2, oy + size + pad + 70);
+    x.fillStyle = "#9aada2"; x.font = "400 26px system-ui, sans-serif";
+    x.fillText("Score, actions et résultat en direct · sans compte", W / 2, oy + size + pad + 115);
+    const blob = await new Promise((res) => c.toBlob(res, "image/png"));
+    const file = new File([blob], "dragons-live-qr.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: "Dragons de Ronchin en direct" }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+    }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "dragons-live-qr.png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setMsg("Image téléchargée : envoie-la sur le groupe WhatsApp.");
+  }
+  async function copy() {
+    const text = `⚾ Suivez le match des Dragons en direct : ${url}`;
+    try { await navigator.clipboard.writeText(text); setMsg("Message copié."); }
+    catch (e) { setMsg(text); }
+  }
+  return (
+    <div className="card">
+      <h2>Lien du live</h2>
+      <div className="hint" style={{ marginBottom: 10 }}>
+        À préparer avant le match : envoie l'image du QR code ou le lien sur WhatsApp. Le live ne
+        montre quelque chose que lorsque la diffusion est activée sur la feuille de match.
+      </div>
+      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+        {svg && <div style={{ background: "#fff", padding: 10, borderRadius: 8, width: 140, lineHeight: 0 }} dangerouslySetInnerHTML={{ __html: svg.replace("<svg ", '<svg style="width:120px;height:120px" ') }} />}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <b style={{ color: "var(--gold)" }}>{url.replace(/^https?:\/\//, "")}</b>
+          <button className="btn-primary small" onClick={makePng}>Image du QR code à partager</button>
+          <button className="btn-ghost small" onClick={copy}>Copier le message avec le lien</button>
+        </div>
+      </div>
+      {msg && <div className="hint" style={{ marginTop: 8 }}>{msg}</div>}
     </div>
   );
 }
@@ -1879,7 +1955,8 @@ const COMPO_KEEP_DAYS = 3; // un match passé reste 3 jours dans Composition, en
 
 /* Composition — lecture seule. Le staff la prépare dans « Compo & changements »
    puis l'envoie ici ; les joueurs la voient à partir de 2 jours avant le match. */
-function LineupView({ state, isStaff }) {
+function LineupView({ state, isStaff, token }) {
+  const [images, setImages] = useState({}); // matchId:imageAt -> dataURL | "none"
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const list = useMemo(() => {
     return state.matches
@@ -1891,6 +1968,15 @@ function LineupView({ state, isStaff }) {
   }, [state.matches, state.lineups, isStaff]);
   const [matchId, setMatchId] = useState(null);
   const cur = list.find((x) => x.m.id === matchId) || list[0];
+  const curImageAt = cur ? getLineup(state, cur.m.id).imageAt : null;
+  const imgKey = cur && curImageAt ? cur.m.id + ":" + curImageAt : null;
+  useEffect(() => {
+    if (!imgKey || images[imgKey]) return;
+    const id = cur.m.id;
+    callApi({ action: "getLineupImage", token, matchId: id })
+      .then((r) => setImages((x) => ({ ...x, [imgKey]: r.image || "none" })))
+      .catch(() => setImages((x) => ({ ...x, [imgKey]: "none" })));
+  }, [imgKey]);
 
   if (!cur) {
     return (
@@ -1907,6 +1993,16 @@ function LineupView({ state, isStaff }) {
 
   const { m, d } = cur;
   const lineup = getLineup(state, m.id);
+  const img = imgKey ? images[imgKey] : null;
+  async function saveImg() {
+    const blob = await (await fetch(img)).blob();
+    const name = `dragons-compo-${(m.label || "match").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`;
+    const file = new File([blob], name, { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: "Composition" }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+    }
+    const a = document.createElement("a"); a.href = img; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  }
   const has = lineup.batting.some(Boolean) || Object.keys(lineup.defense).length > 0;
   const nameOf = (id) => {
     const p = state.roster.find((r) => r.id === id);
@@ -1943,7 +2039,14 @@ function LineupView({ state, isStaff }) {
         )}
       </div>
 
-      {!has ? (
+      {imgKey && img && img !== "none" ? (
+        <div className="card">
+          <img src={img} alt={`Composition ${m.label}`} style={{ display: "block", width: "100%", borderRadius: 10 }} />
+          <button className="btn-primary small" style={{ marginTop: 12 }} onClick={saveImg}>Enregistrer / partager l'image</button>
+        </div>
+      ) : imgKey && !img ? (
+        <div className="card"><div className="hint">Chargement de la composition…</div></div>
+      ) : !has ? (
         <div className="card"><div className="hint">Pas encore de composition pour ce match.</div></div>
       ) : (
         <>
@@ -2741,16 +2844,16 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@500;700&display=swap');
 
 .dragons-app {
-  --bg: #0f2818;
-  --panel: #143a24;
-  --panel-alt: #1b4a2e;
-  --line: rgba(212, 175, 55, 0.25);
-  --gold: #d4af37;
-  --cream: #f1ead6;
-  --ok: #3f9e5e;
-  --bad: #c0392b;
-  --warn: #e0a83d;
-  --muted: #9db8a5;
+  --bg: #0e1511;
+  --panel: #17211b;
+  --panel-alt: #1b3527;
+  --line: #2a3a31;
+  --gold: #3fae74;
+  --cream: #e7efea;
+  --ok: #43c383;
+  --bad: #f2665a;
+  --warn: #f2b632;
+  --muted: #9aada2;
   font-family: 'Inter', sans-serif;
   background: var(--bg);
   color: var(--cream);
@@ -2762,7 +2865,7 @@ const CSS = `
   box-sizing: border-box;
 }
 .dragons-app * { box-sizing: border-box; }
-html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
+html, body { overflow-x: hidden; min-height: 100%; background: #0e1511; }
 
 .center-screen {
   display: flex;
@@ -2827,7 +2930,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   font-size: 13px;
   font-family: 'Inter', sans-serif;
 }
-.tsw.active { background: var(--gold); color: #12280f; font-weight: 600; }
+.tsw.active { background: var(--gold); color: #06130c; font-weight: 600; }
 
 .btn-ghost {
   background: transparent;
@@ -2872,7 +2975,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   display: flex;
   flex-direction: column;
   gap: 3px;
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
@@ -2888,7 +2991,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
 .field input, .field select {
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   color: var(--cream);
   padding: 9px 10px;
@@ -2905,7 +3008,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .btn-primary {
   width: 100%;
   background: var(--gold);
-  color: #12280f;
+  color: #06130c;
   border: none;
   padding: 11px;
   border-radius: 8px;
@@ -2928,7 +3031,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 }
 
 .error {
-  background: rgba(192, 57, 43, 0.15);
+  background: rgba(242, 102, 90, 0.15);
   border: 1px solid var(--bad);
   color: #ff9d8f;
   padding: 8px 10px;
@@ -2953,7 +3056,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px;
-  background: #0c2015;
+  background: #121a15;
 }
 .match-info { min-width: 110px; }
 .match-name { font-family: 'Oswald', sans-serif; color: var(--cream); font-size: 14px; }
@@ -2969,7 +3072,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   font-size: 12px;
   cursor: pointer;
 }
-.status-btn.selected.present { background: var(--ok); border-color: var(--ok); color: #06210f; font-weight: 600; }
+.status-btn.selected.present { background: var(--ok); border-color: var(--ok); color: #050d08; font-weight: 600; }
 .status-btn.selected.absent { background: var(--bad); border-color: var(--bad); color: #2a0805; font-weight: 600; }
 .status-btn.selected.reserve { background: var(--warn); border-color: var(--warn); color: #2a1c02; font-weight: 600; }
 
@@ -2981,7 +3084,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  color: #0c2015;
+  color: #121a15;
 }
 .pill-empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); font-weight: 400; }
 
@@ -2995,7 +3098,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   font-size: 12px;
   cursor: pointer;
 }
-.mtab.active { background: var(--gold); color: #12280f; border-color: var(--gold); font-weight: 600; }
+.mtab.active { background: var(--gold); color: #06130c; border-color: var(--gold); font-weight: 600; }
 
 .counts-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .count-chip { font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); }
@@ -3007,7 +3110,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .search {
   width: 100%;
   box-sizing: border-box;
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   color: var(--cream);
   padding: 9px 10px;
@@ -3030,7 +3133,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .grid-name { font-family: 'Inter', sans-serif; }
 .grid-name-edit { display: flex; flex-direction: column; gap: 4px; }
 .grid-name-edit input {
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   color: var(--cream);
   padding: 5px 7px;
@@ -3087,7 +3190,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .match-select {
   width: 100%;
   box-sizing: border-box;
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   color: var(--cream);
   padding: 9px 10px;
@@ -3103,12 +3206,12 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .field-infield { fill: #b98a55; stroke: var(--cream); stroke-width: 0.4; }
 .field-line { stroke: var(--cream); stroke-width: 0.6; }
 .field-base { fill: var(--cream); }
-.field-marker { fill: rgba(12,32,21,0.85); stroke: var(--gold); stroke-width: 0.6; }
+.field-marker { fill: rgba(14, 21, 17,0.85); stroke: var(--gold); stroke-width: 0.6; }
 .field-marker.filled { fill: var(--gold); stroke: var(--cream); }
 .field-marker-label { font-family: 'Oswald', sans-serif; font-size: 5.4px; fill: var(--cream); font-weight: 700; }
-.field-marker.filled + .field-marker-label { fill: #12280f; }
-.field-marker-name-bg { fill: rgba(241, 234, 214, 0.92); }
-.field-marker-name { font-family: 'Inter', sans-serif; font-size: 3.9px; font-weight: 700; fill: #12280f; }
+.field-marker.filled + .field-marker-label { fill: #06130c; }
+.field-marker-name-bg { fill: rgba(231, 239, 234, 0.92); }
+.field-marker-name { font-family: 'Inter', sans-serif; font-size: 3.9px; font-weight: 700; fill: #06130c; }
 .field-marker-name-empty { fill: var(--muted); }
 
 .defense-list { display: flex; flex-direction: column; gap: 8px; }
@@ -3135,7 +3238,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   width: 22px;
   text-align: center;
 }
-.batting-row select { flex: 1; background: #0c2015; border: 1px solid var(--line); color: var(--cream); padding: 8px; border-radius: 8px; }
+.batting-row select { flex: 1; background: #121a15; border: 1px solid var(--line); color: var(--cream); padding: 8px; border-radius: 8px; }
 
 .btn-primary.small { width: auto; padding: 8px 14px; font-size: 13px; }
 .btn-ghost.small { padding: 6px 10px; font-size: 12px; }
@@ -3149,7 +3252,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 }
 
 .ok-msg {
-  background: rgba(63, 158, 94, 0.15);
+  background: rgba(67, 195, 131, 0.15);
   border: 1px solid var(--ok);
   color: #b6e6c5;
   padding: 8px 10px;
@@ -3168,7 +3271,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px;
-  background: #0c2015;
+  background: #121a15;
 }
 .account-checkbox { flex: 0 0 auto; width: 16px; height: 16px; }
 .bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -3187,14 +3290,14 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   cursor: pointer;
   font-size: 12px;
 }
-.btn-danger:hover { background: rgba(192, 57, 43, 0.15); }
+.btn-danger:hover { background: rgba(242, 102, 90, 0.15); }
 .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .confirm-text { font-size: 12px; color: var(--muted); }
 
 .reset-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .reset-form input {
-  background: #143a24;
+  background: #17211b;
   border: 1px solid var(--line);
   color: var(--cream);
   padding: 7px 8px;
@@ -3207,7 +3310,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 14px;
-  background: #0c2015;
+  background: #121a15;
 }
 .match-admin-title {
   font-family: 'Oswald', sans-serif;
@@ -3227,7 +3330,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   font-size: 12px;
   cursor: pointer;
 }
-.loc-btn.active { background: var(--gold); color: #12280f; border-color: var(--gold); font-weight: 600; }
+.loc-btn.active { background: var(--gold); color: #06130c; border-color: var(--gold); font-weight: 600; }
 .loc-btn-cancel.active { background: var(--bad); border-color: var(--bad); color: #fff; }
 
 .matches-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -3284,9 +3387,9 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   gap: 4px;
 }
 .poste-chip strong { font-family: 'Roboto Mono', monospace; }
-.poste-chip.poste-zero { border-color: var(--bad); color: #ff9d8f; background: rgba(192, 57, 43, 0.12); }
-.poste-chip.poste-low { border-color: var(--warn); color: var(--warn); background: rgba(224, 168, 61, 0.1); }
-.poste-chip.poste-ok { border-color: var(--ok); color: #8fe3ac; background: rgba(63, 158, 94, 0.1); }
+.poste-chip.poste-zero { border-color: var(--bad); color: #ff9d8f; background: rgba(242, 102, 90, 0.12); }
+.poste-chip.poste-low { border-color: var(--warn); color: var(--warn); background: rgba(242, 182, 50, 0.1); }
+.poste-chip.poste-ok { border-color: var(--ok); color: #8fe3ac; background: rgba(67, 195, 131, 0.1); }
 
 .innings-table {
   border: 1px solid var(--line);
@@ -3323,7 +3426,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .innings-cell input {
   width: 100%;
   box-sizing: border-box;
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   color: var(--cream);
   text-align: center;
@@ -3368,7 +3471,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .standings-num-input {
   width: 100%;
   box-sizing: border-box;
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   color: var(--cream);
   text-align: center;
@@ -3383,7 +3486,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 .standings-team-input {
   width: 100%;
   box-sizing: border-box;
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   color: var(--cream);
   padding: 6px 8px;
@@ -3400,7 +3503,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   font-size: 11px;
 }
 .standings-season-input:focus {
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--cream);
@@ -3448,7 +3551,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   margin: 14px 0;
 }
 .hist-stat {
-  background: #0c2015;
+  background: #121a15;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px;
@@ -3467,7 +3570,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   justify-content: center;
   font-size: 11px;
   font-weight: 700;
-  color: #0c2015;
+  color: #121a15;
   cursor: default;
 }
 .hist-chip.hist-v { background: var(--ok); }
@@ -3483,12 +3586,12 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px;
-  background: #0c2015;
+  background: #121a15;
 }
 .hist-row-title { font-size: 13px; color: var(--cream); }
 .hist-row-season { color: var(--muted); font-size: 12px; }
 .compo-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.compo-order li { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(212,175,55,0.15); }
+.compo-order li { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(63, 174, 116,0.15); }
 .compo-n { color: var(--gold); font-weight: 700; text-align: center; }
 .compo-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compo-pos { color: var(--gold); font-size: 13px; font-weight: 600; }
@@ -3503,7 +3606,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
   border-top: none;
   border-radius: 0 0 10px 10px;
   padding: 12px;
-  background: #0a1a10;
+  background: #0a110d;
   margin-top: -1px;
 }
 .hist-comp-block { margin-bottom: 12px; }

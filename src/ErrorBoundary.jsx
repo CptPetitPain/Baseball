@@ -21,24 +21,24 @@ export default class ErrorBoundary extends React.Component {
         <div
           style={{
             fontFamily: "monospace",
-            background: "#0f2818",
-            color: "#f1ead6",
+            background: "#0e1511",
+            color: "#e7efea",
             minHeight: "100vh",
             padding: "24px",
             boxSizing: "border-box",
           }}
         >
-          <h1 style={{ color: "#e0a83d", fontSize: 18 }}>
+          <h1 style={{ color: "#f2b632", fontSize: 18 }}>
             Une erreur a arrêté l'affichage de cette page
           </h1>
           <p>Copie ce message et envoie-le pour qu'on corrige le problème :</p>
           <pre
             style={{
               whiteSpace: "pre-wrap",
-              background: "#0c2015",
+              background: "#121a15",
               padding: "12px",
               borderRadius: "8px",
-              border: "1px solid rgba(212,175,55,0.25)",
+              border: "1px solid rgba(63, 174, 116,0.25)",
               fontSize: 13,
             }}
           >
@@ -48,8 +48,8 @@ export default class ErrorBoundary extends React.Component {
             onClick={() => window.location.reload()}
             style={{
               marginTop: 16,
-              background: "#d4af37",
-              color: "#12280f",
+              background: "#3fae74",
+              color: "#06130c",
               border: "none",
               padding: "10px 16px",
               borderRadius: "8px",
