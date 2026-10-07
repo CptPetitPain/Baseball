@@ -166,12 +166,12 @@ tr:last-child td{border-bottom:0}
 const KEY='dragons-feuille-club-v1';
 const TOKEN_KEY='dragons-session-token';
 const RES={
-  '1B':['1B','Simple','hit'],'2B':['2B','Double','hit'],'3B':['3B','Triple','hit'],'HR':['HR','Circuit','hit'],
-  'BB':['BB','But sur balles','on'],'HBP':['HBP','Touché','on'],'E':['E','Erreur','on'],'FC':['CD','Batteur sauf, coureur out','on'],
-  'K':['K','Retrait prises','out'],'GO':['Sol','Retrait au sol','out'],'FO':['Volée','Retrait en l’air','out'],'SAC':['Sac','Sacrifice','out']
+  '1B':['1B','Simple','hit'],'2B':['2B','Double','hit'],'3B':['3B','Triple','hit'],'HR':['HR','Home run','hit'],
+  'BB':['BB','Walk','on'],'HBP':['HBP','Hit by pitch','on'],'E':['E','Error','on'],'FC':['FC','Fielder’s choice','on'],
+  'K':['K','Strikeout','out'],'GO':['GO','Ground out','out'],'FO':['FO','Fly out','out'],'SAC':['Sac','Sacrifice','out']
 };
-const DPL={BB:'but sur balles accordé',HBP:'batteur touché',WP:'lancer sauvage',K:'retrait sur prises',PB:'balle passée'};
-const NOTES=['Bras faible CF','Bras faible LF','Bras faible RF','Receveur lent sur les vols','Lanceur lent au marbre','Défense joue profond','3B joue loin','Lanceur : 1er lancer strike','Lanceur ne regarde pas le coureur'];
+const DPL={BB:'walk',HBP:'hit by pitch',WP:'wild pitch',K:'strikeout',PB:'passed ball'};
+const NOTES=['Bras faible CF','Bras faible LF','Bras faible RF','Catcher lent sur les vols','Pitcher lent au marbre','Défense joue profond','3B joue loin','Pitcher : 1er lancer strike','Pitcher ne regarde pas le coureur'];
 
 const uid=()=>Math.random().toString(36).slice(2,9);
 let db=load();
@@ -187,12 +187,18 @@ const M=()=>db.matches[db.current];
 /* ============ Moteur : on rejoue les actions ============ */
 function replay(m){
   const first=m.first||(m.home?'def':'att');
-  const s={dh:m.dh||null,catcher:m.catcher||null,df:{},first,inn:1,half:first,b:0,s:0,o:0,B:[null,null,null],bat:0,lineup:m.lineup.slice(),us:{},opp:{},st:{},log:[],over:false,lastPA:null,pitcher:m.pitcher||null,pc:{}};
+  const s={do:0,dB:[false,false,false],dh:m.dh||null,catcher:m.catcher||null,df:{},first,inn:1,half:first,b:0,s:0,o:0,B:[null,null,null],bat:0,lineup:m.lineup.slice(),us:{},opp:{},st:{},log:[],over:false,lastPA:null,pitcher:m.pitcher||null,pc:{}};
   const S=id=>s.st[id]||(s.st[id]={cs:0,e:0,pa:0,ab:0,h:0,d:0,t:0,hr:0,r:0,rbi:0,bb:0,hbp:0,k:0,sb:0,res:[]});
   s.lineup.forEach(S);
   const L=(o)=>s.log.push(Object.assign({inn:s.inn,half:s.half},o));
   const score=(id,rbiTo)=>{s.us[s.inn]=(s.us[s.inn]||0)+1;S(id).r++;if(rbiTo)S(rbiTo).rbi++};
-  const endHalf=()=>{s.half=s.half==='att'?'def':'att';if(s.half===s.first)s.inn++;s.b=0;s.s=0;s.o=0;s.B=[null,null,null];s.lastPA=null};
+  const oppRun=()=>{s.opp[s.inn]=(s.opp[s.inn]||0)+1};
+  const dForce=()=>{const B=s.dB;if(B[0]){if(B[1]){if(B[2])oppRun();B[2]=true}B[1]=true}B[0]=true};
+  const dAdv=n=>{const B=s.dB;for(let i=2;i>=0;i--)if(B[i]){B[i]=false;const t=i+n;if(t>=3)oppRun();else B[t]=true}};
+  // WP/PB : les coureurs de 1re et 2e avancent si la base suivante est libre ; celui de 3e reste (à confirmer à la main)
+  const dWild=()=>{const B=s.dB;if(B[1]&&!B[2]){B[2]=true;B[1]=false}if(B[0]&&!B[1]){B[1]=true;B[0]=false}};
+  const dOut=()=>{s.do++;if(s.do>=3){L({t:'end'});endHalf()}};
+  const endHalf=()=>{s.half=s.half==='att'?'def':'att';if(s.half===s.first)s.inn++;s.b=0;s.s=0;s.o=0;s.B=[null,null,null];s.lastPA=null;s.do=0;s.dB=[false,false,false]};
   const pa=(res)=>{
     const id=s.lineup[s.bat],p=S(id),B=s.B,count=Math.min(s.b,3)+'-'+Math.min(s.s,2),sc=[];
     p.pa++;p.res.push(res);if(!['BB','HBP','SAC'].includes(res))p.ab++;
@@ -235,11 +241,25 @@ function replay(m){
       case'SUB':{const old=s.lineup[e.slot];s.lineup[e.slot]=e.id;if(s.dh&&old===s.dh)s.dh=e.id;S(e.id);s.B=s.B.map(x=>x===old&&e.run?e.id:x);L({t:'sub',id:e.id,old,slot:e.slot});break}
       case'END':L({t:'end'});endHalf();break;
       case'OPP':s.opp[e.inn]=Math.max(0,(s.opp[e.inn]||0)+e.d);break;
+      case'DOUT':if(s.half!=='def')break;if(e.d>0)dOut();else s.do=Math.max(0,s.do-1);break;
+      case'DB':if(s.half!=='def')break;s.dB[e.i]=!s.dB[e.i];break;
+      case'DHIT':if(s.half!=='def')break;{const n={'1B':1,'2B':2,'3B':3,'HR':4}[e.v]||1;dAdv(n);if(n>=4)oppRun();else s.dB[n-1]=true}break;
+      case'DR':{if(s.half!=='def')break;const B=s.dB,i=e.i;
+        if(e.a==='add'){B[i]=true;break}
+        if(!B[i])break;
+        if(e.a==='adv'){if(i===2){B[2]=false;oppRun()}else if(!B[i+1]){B[i]=false;B[i+1]=true}}
+        else if(e.a==='score'){B[i]=false;oppRun()}
+        else if(e.a==='out'){B[i]=false;dOut()}
+        else if(e.a==='del'){B[i]=false}
+        break}
       case'PCH':s.pitcher=e.id;L({t:'pch',id:e.id});break;
       case'PT':if(s.pitcher){s.pc[s.pitcher]=Math.max(0,(s.pc[s.pitcher]||0)+e.d)}break;
       case'N':L({t:'note',txt:e.txt});break;
       case'CAT':s.catcher=e.id;L({t:'cat',id:e.id});break;
-      case'DP':{const id=e.kind==='PB'?s.catcher:s.pitcher;if(!id)break;const d=s.df[id]||(s.df[id]={wp:0,pb:0,bb:0,hbp:0,k:0});d[e.kind.toLowerCase()]++;L({t:'dp',id,kind:e.kind});break}
+      case'DP':{const id=e.kind==='PB'?s.catcher:s.pitcher;
+        if(id){const d=s.df[id]||(s.df[id]={wp:0,pb:0,bb:0,hbp:0,k:0});d[e.kind.toLowerCase()]++;L({t:'dp',id,kind:e.kind})}
+        if(s.half==='def'){if(e.kind==='K')dOut();else if(e.kind==='BB'||e.kind==='HBP')dForce();else if(e.kind==='WP'||e.kind==='PB')dWild()}
+        break}
       case'DE':S(e.id).e++;L({t:'derr',id:e.id});break;
       case'FIN':s.over=true;break;
     }
@@ -311,7 +331,7 @@ async function pull(){
 }
 /* ---- Version publique (page /live) : prénom + numéro, rien de privé ---- */
 function lab(id){const p=P(id);return p.num?`${p.name} #${p.num}`:p.name}
-const PUBK={'1B':'simple','2B':'double','3B':'triple','HR':'circuit','BB':'but sur balles','HBP':'touché','E':'sur erreur','FC':'choix défensif','K':'retrait sur prises','GO':'retrait au sol','FO':'retrait en l’air','SAC':'sacrifice'};
+const PUBK={'1B':'simple','2B':'double','3B':'triple','HR':'home run','BB':'walk','HBP':'hit by pitch','E':'on error','FC':'fielder’s choice','K':'strikeout','GO':'ground out','FO':'fly out','SAC':'sacrifice'};
 function pubOf(m){
   const s=replay(m),feed=[];
   s.log.forEach((e,i)=>{
@@ -320,18 +340,18 @@ function pubOf(m){
       feed.push({n,k:e.res,txt:`${lab(e.id)} · ${PUBK[e.res]}`,who:lab(e.id),inn:e.inn});
       (e.runs||[]).forEach((r,j)=>feed.push({n:n+1+j,k:'RUN',txt:r===e.id?`Point · ${lab(r)} marque`:`Point · ${lab(r)} marque sur le ${PUBK[e.res]} de ${nm(e.id)}`,who:lab(r),inn:e.inn}));
     }else if(e.t==='run'){
-      if(e.a==='sb')feed.push({n,k:e.to>=3?'RUN':'SB',txt:e.to>=3?`Point · ${lab(e.id)} vole le marbre`:`${lab(e.id)} · vol de la ${['','2e','3e'][e.to]}`,who:lab(e.id),to:e.to,inn:e.inn});
+      if(e.a==='sb')feed.push({n,k:e.to>=3?'RUN':'SB',txt:e.to>=3?`Point · ${lab(e.id)} steal home`:`${lab(e.id)} · stolen base (${['','2e','3e'][e.to]})`,who:lab(e.id),to:e.to,inn:e.inn});
       else if(e.a==='cs')feed.push({n,k:'OUT',txt:`${lab(e.id)} · retiré en tentative de vol`,inn:e.inn});
       else if(e.a==='out')feed.push({n,k:'OUT',txt:`${lab(e.id)} · retiré sur base`,inn:e.inn});
       else if(e.to>=3)feed.push({n,k:'RUN',txt:`Point · ${lab(e.id)} marque`,who:lab(e.id),inn:e.inn});
       else feed.push({n,k:'ADV',txt:`${lab(e.id)} · avance en ${['','2e','3e'][e.to]}`,inn:e.inn});
     }else if(e.t==='wp'){
       e.moved.forEach(([id,to],j)=>feed.push({n:n+j,k:to>=3?'RUN':'ADV',txt:to>=3?`Point · ${lab(id)} marque`:`${lab(id)} · avance en ${['','2e','3e'][to]}`,who:lab(id),inn:e.inn}));
-    }else if(e.t==='dp'&&e.kind==='K')feed.push({n,k:'KDEF',txt:`Retrait sur prises par ${lab(e.id)}`,who:lab(e.id),inn:e.inn});
-    else if(e.t==='pch')feed.push({n,k:'INFO',txt:`Au monticule : ${lab(e.id)}`,inn:e.inn});
+    }else if(e.t==='dp'&&e.kind==='K')feed.push({n,k:'KDEF',txt:`Strikeout par ${lab(e.id)}`,who:lab(e.id),inn:e.inn});
+    else if(e.t==='pch')feed.push({n,k:'INFO',txt:`Pitcher : ${lab(e.id)}`,inn:e.inn});
     else if(e.t==='sub')feed.push({n,k:'INFO',txt:`Changement : ${lab(e.id)} remplace ${lab(e.old)}`,inn:e.inn});
   });
-  const id=s.lineup[s.bat],st=s.st[id]||{},extra=[['d','double'],['t','triple'],['hr','circuit']].filter(([k])=>st[k]).map(([k,w])=>`${st[k]} ${w}${st[k]>1?'s':''}`);
+  const id=s.lineup[s.bat],st=s.st[id]||{},extra=[['d','double'],['t','triple'],['hr','home run']].filter(([k])=>st[k]).map(([k,w])=>`${st[k]} ${w}${st[k]>1?'s':''}`);
   const att=s.half==='att'&&!s.over;
   const rows=s.over?recapRows(m,s).filter(r=>r.pa>0).map(r=>[lab(r.id),r.h,r.ab,r.r,r.rbi,r.hr,r.bb,r.sb]):[];
   return {opp:m.opp,date:m.date,home:!!m.home,first:s.first,over:s.over,inn:s.inn,half:s.half,att,outs:s.o,
@@ -339,7 +359,7 @@ function pubOf(m){
     bases:att?s.B.map(x=>x?lab(x):null):[null,null,null],
     batter:att?lab(id):null,batterLine:att?(st.pa?`${st.h} sur ${st.ab}${extra.length?', '+extra.join(', '):''}`:'1re présence'):null,
     next:att?lab(s.lineup[(s.bat+1)%s.lineup.length]):null,
-    pitcher:!att&&s.pitcher?lab(s.pitcher):null,
+    pitcher:!att&&s.pitcher?lab(s.pitcher):null,dOuts:!att?s.do:0,dBases:!att?s.dB.map(Boolean):[false,false,false],
     us:s.us,them:s.opp,feed:feed.slice(-30).reverse(),rows};
 }
 function mapRoster(r){
@@ -408,7 +428,7 @@ function fmtDate(d){try{return new Date(d+'T12:00').toLocaleDateString('fr-FR',{
 function rosterV(){
   return `<div class="top"><button class="btn small ghost" data-a="go" data-v="home">‹ Retour</button><h1>Réglages</h1><span></span></div>
   <div class="stack">
-    <div class="card stack"><div class="label">Lanceurs jeunes</div>
+    <div class="card stack"><div class="label">Pitchers jeunes</div>
       <div class="row" style="flex-wrap:nowrap"><label style="flex:1">Limite par jour<input id="lim" inputmode="numeric" value="${db.settings.limit}"></label><label style="flex:1">Alerte à<input id="warn" inputmode="numeric" value="${db.settings.warn}"></label></div>
       <button class="btn small" data-a="setlim">Enregistrer les limites</button></div>
     <div class="label">Effectif du club</div>
@@ -423,13 +443,13 @@ function setupV(){
   return `<div class="top"><button class="btn small ghost" data-a="go" data-v="home">‹ Annuler</button><h1>Nouveau match</h1><span></span></div>
   <div class="stack">
     ${db.cal.length?`<label>Match du calendrier<select id="link"><option value="">— Aucun (match amical…) —</option>${db.cal.map(c=>`<option value="${esc(c.id)}" ${d.link===c.id?'selected':''}>${esc(c.label)}${c.date?' · '+esc(c.date):''}${c.opp?' · '+esc(c.opp):''}</option>`).join('')}</select></label>
-    ${d.link?`<p class="muted" style="margin:-4px 0 0;font-size:14px">Adversaire, lieu, ordre des frappeurs, lanceur et receveur repris de la Composition. Le score pourra être envoyé dans Résultats.</p>`:''}`:''}
+    ${d.link?`<p class="muted" style="margin:-4px 0 0;font-size:14px">Adversaire, lieu, ordre des frappeurs, pitcher et catcher repris de la Composition. Le score pourra être envoyé dans Résultats.</p>`:''}`:''}
     <label>Adversaire<input id="opp" value="${esc(d.opp)}" placeholder="Ex. Lions de Lille"></label>
     <label>Date<input id="date" type="date" value="${d.date}"></label>
     <div class="row" style="flex-wrap:nowrap"><button class="btn ${d.home?'primary':''}" style="flex:1" data-a="home" data-v="1">Domicile · Ronchin</button><button class="btn ${!d.home?'primary':''}" style="flex:1" data-a="home" data-v="0">Extérieur</button></div>
-    <div class="label">Lanceur partant</div>
+    <div class="label">Pitcher partant</div>
     <div class="chips">${db.roster.map(p=>`<button class="chip ${d.pitcher===p.id?'sel':''}" data-a="spitch" data-v="${p.id}">${esc(p.name)}</button>`).join('')}</div>
-    ${d.pitcher?`<div class="row" style="flex-wrap:nowrap"><button class="btn ${!d.dhOn?'primary':''}" style="flex:1" data-a="dhon" data-v="0">Le lanceur frappe</button><button class="btn ${d.dhOn?'primary':''}" style="flex:1" data-a="dhon" data-v="1">DH pour le lanceur</button></div>
+    ${d.pitcher?`<div class="row" style="flex-wrap:nowrap"><button class="btn ${!d.dhOn?'primary':''}" style="flex:1" data-a="dhon" data-v="0">Le pitcher frappe</button><button class="btn ${d.dhOn?'primary':''}" style="flex:1" data-a="dhon" data-v="1">DH pour le pitcher</button></div>
     ${d.dhOn?`<div class="alert ${d.dh?'':'warn'}">${d.dh?`${esc(nm(d.dh))} frappe à la place de ${esc(nm(d.pitcher))}.`:`Ajoute ton DH dans l’ordre puis touche « DH » à côté de son nom. ${esc(nm(d.pitcher))} ne frappe pas.`}</div>`:''}`:''}
     <div class="label">Ordre des frappeurs · touche les joueurs dans l’ordre</div>
     <div class="list">${d.lineup.map((id,i)=>`<div class="item sel"><span class="n">${i+1}</span><span class="grow"><b>${esc(nm(id))}</b>${d.dhOn&&d.dh===id?dhTag:''} <span class="muted">#${esc(P(id).num)}</span></span>${d.dhOn?`<button class="btn small ${d.dh===id?'primary':'ghost'}" data-a="sdh" data-v="${id}">DH</button>`:''}<button class="btn small ghost" data-a="lup" data-v="${i}" ${i?'':'disabled'} aria-label="Monter">↑</button><button class="btn small ghost" data-a="lrm" data-v="${i}" aria-label="Retirer">✕</button></div>`).join('')||'<p class="muted">Personne pour l’instant.</p>'}</div>
@@ -465,8 +485,8 @@ function navV(){
 
 function inningBar(s){
   const att=s.half==='att';
-  return `<div class="inningbar"><span class="pill ${att?'':'def'}">${att?'Attaque':'Défense'} · ${s.half===s.first?'Haut':'Bas'} ${s.inn}<sup>e</sup></span>
-  ${att?`<div class="outs" aria-label="${s.o} retrait(s)"><span class="label">Retraits</span>${[0,1].map(i=>`<i class="dot ${s.o>i?'on':''}"></i>`).join('')}</div>`:''}</div>`;
+  return `<div class="inningbar"><span class="pill ${att?'':'def'}">${att?'Attaque':'Défense'} · ${s.half===s.first?'Top':'Bottom'} ${s.inn}</span>
+  ${att?`<div class="outs" aria-label="${s.o} out(s)"><span class="label">Outs</span>${[0,1].map(i=>`<i class="dot ${s.o>i?'on':''}"></i>`).join('')}</div>`:''}</div>`;
 }
 function attV(m,s){
   const id=s.lineup[s.bat],st=s.st[id];
@@ -474,10 +494,10 @@ function attV(m,s){
   const next=[1,2].map(k=>s.lineup[(s.bat+k)%s.lineup.length]).map(nm).join(' · ');
   return `${inningBar(s)}
   <div class="card stack">
-    <div class="batter"><button style="text-align:left" data-a="subsheet" data-v="${s.bat}"><div class="label">${s.bat+1}<sup>e</sup> frappeur · touche pour remplacer</div><div class="name">${esc(nm(id))}</div>${s.dh===id?`<div class="line">DH pour ${esc(nm(s.pitcher))}</div>`:''}<div class="line">${esc(line)}</div></button>
+    <div class="batter"><button style="text-align:left" data-a="subsheet" data-v="${s.bat}"><div class="label">At bat · ${s.bat+1}<sup>e</sup> · touche pour remplacer</div><div class="name">${esc(nm(id))}</div>${s.dh===id?`<div class="line">DH pour ${esc(nm(s.pitcher))}</div>`:''}<div class="line">${esc(line)}</div></button>
     ${showCount()?`<div class="count"><div class="big" aria-label="${s.b} balles ${s.s} prises">${s.b}-${s.s}</div><div class="lbl"><div class="lights b">${[0,1,2].map(i=>`<i class="${s.b>i?'on':''}"></i>`).join('')}</div><div class="lights s">${[0,1].map(i=>`<i class="${s.s>i?'on':''}"></i>`).join('')}</div></div></div>`:''}</div>
     ${showCount()?`<div class="grid g3"><button class="key pitch b" data-a="p" data-v="B"><b>Balle</b></button><button class="key pitch s" data-a="p" data-v="S"><b>Strike</b></button><button class="key pitch s" data-a="p" data-v="F"><b>Fausse</b><small>balle</small></button></div>`:''}
-    <button class="btn small ghost" style="align-self:flex-start" data-a="togcount">${showCount()?'Masquer le compte balles / strikes':'Afficher le compte balles / strikes'}</button>
+    <button class="btn small ghost" style="align-self:flex-start" data-a="togcount">${showCount()?'Masquer le compte balls / strikes':'Afficher le compte balls / strikes'}</button>
   </div>
   <div class="label">Résultat de la présence</div>
   <div class="grid g4">${['1B','2B','3B','HR'].map(keyR).join('')}</div>
@@ -486,7 +506,7 @@ function attV(m,s){
   <div class="card diamondwrap">${diamond(s)}
     ${s.B.some(Boolean)?`<div class="stack" style="width:100%"><div class="label" style="text-align:center">Coureurs · après un coup sûr, corrige ici s’ils sont allés plus loin</div>${[2,1,0].filter(i=>s.B[i]).map(i=>{const id=s.B[i],free=i===2||!s.B[i+1],nxt=['2e','3e','marbre'][i];return`<div class="runrow"><div class="rname">${esc(nm(id))} <span class="muted">en ${['1re','2e','3e'][i]}</span></div>
       <div class="grid g3">${i<2?`<button class="key hit small" data-a="r" data-v="${i}:adv" ${free?'':'disabled'}><b>→ ${nxt}</b><small>avance</small></button>`:`<span></span>`}<button class="key hit small" data-a="r" data-v="${i}:score"><b>Marque</b><small>au marbre</small></button><button class="key out small" data-a="r" data-v="${i}:out"><b>Out</b><small>sur le jeu</small></button></div>
-      <div class="grid" style="grid-template-columns:1fr 1fr"><button class="btn small" data-a="r" data-v="${i}:sb" ${free?'':'disabled'}>Vol → ${nxt}</button><button class="btn small" style="color:var(--out)" data-a="r" data-v="${i}:cs">Pris en vol</button></div></div>`}).join('')}</div>`:''}
+      <div class="grid" style="grid-template-columns:1fr 1fr"><button class="btn small" data-a="r" data-v="${i}:sb" ${free?'':'disabled'}>SB → ${nxt}</button><button class="btn small" style="color:var(--out)" data-a="r" data-v="${i}:cs">Pris en vol</button></div></div>`}).join('')}</div>`:''}
     <div class="ondeck muted">Ensuite : ${esc(next)}</div></div>
   <div class="row" style="flex-wrap:nowrap"><button class="btn" style="flex:1" data-a="undo" ${m.events.length?'':'disabled'}>↶ Annuler</button><button class="btn" style="flex:1" data-a="endhalf">Fin d’attaque</button></div>`;
 }
@@ -512,26 +532,37 @@ function defV(m,s){
   const pct=Math.min(100,tot/lim*100),cls=tot>=lim?'bad':tot>=warn?'warn':'';
   return `${inningBar(s)}
   <div class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="label">Lanceur</div><button class="btn small" data-a="pchsheet">${pid?'Changer':'Choisir'}</button></div>
+    <div class="row" style="justify-content:space-between"><div class="label">Pitcher</div><button class="btn small" data-a="pchsheet">${pid?'Changer':'Choisir'}</button></div>
     ${pid?`<div class="pc"><div><div class="batter"><div class="name">${esc(nm(pid))}</div></div><div class="muted" style="font-size:14px">${here} dans ce match${before?` · ${before} plus tôt aujourd’hui`:''}</div></div><div style="text-align:right"><div class="big">${tot}</div><div class="label">sur ${lim}</div></div></div>
     <div class="meter ${cls}"><i style="width:${pct}%"></i></div>
     ${tot>=lim?`<div class="alert bad">Limite de ${lim} lancers atteinte pour aujourd’hui.</div>`:tot>=warn?`<div class="alert warn">Plus que ${lim-tot} lancers avant la limite.</div>`:''}
     <button class="plus" data-a="pt" data-v="1">+1 lancer</button>
     <div class="row" style="flex-wrap:nowrap"><button class="btn small" style="flex:1" data-a="pt" data-v="-1">−1 (corriger)</button></div>
     <div class="label">Actions de ${esc(nm(pid))}${(()=>{const d=s.df[pid];return d?` · ${d.k} K, ${d.bb} BB, ${d.hbp} HBP, ${d.wp} WP`:''})()}</div>
-    <div class="grid g4">${[['K','Retrait prises'],['BB','But sur balles'],['HBP','Touché'],['WP','Lancer sauvage']].map(([k,l])=>`<button class="key ${k==='K'?'hit':'out'}" data-a="dp" data-v="${k}"><b>${k}</b><small>${l}</small></button>`).join('')}</div>`
-    :`<p class="muted" style="margin:0">Choisis ton lanceur pour compter ses lancers. Le total de la journée inclut les autres matchs du même jour.</p>`}
+    <div class="grid g4">${[['K','Strikeout'],['BB','Walk'],['HBP','Hit by pitch'],['WP','Wild pitch']].map(([k,l])=>`<button class="key ${k==='K'?'hit':'out'}" data-a="dp" data-v="${k}"><b>${k}</b><small>${l}</small></button>`).join('')}</div>`
+    :`<p class="muted" style="margin:0">Choisis ton pitcher pour compter ses lancers. Le total de la journée inclut les autres matchs du même jour.</p>`}
   </div>
-  <div class="card stack"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div style="min-width:0"><div class="label">Receveur</div><div class="num" style="font-size:24px;text-transform:uppercase">${s.catcher?esc(nm(s.catcher)):'—'}</div>${s.catcher&&s.df[s.catcher]?.pb?`<div class="muted" style="font-size:14px">${s.df[s.catcher].pb} balle(s) passée(s)</div>`:''}</div>
-    <div class="row" style="flex-wrap:nowrap"><button class="btn small" data-a="catsheet">${s.catcher?'Changer':'Choisir'}</button>${s.catcher?`<button class="key out" style="min-height:52px;padding:0 14px" data-a="dp" data-v="PB"><b>PB</b><small>Balle passée</small></button>`:''}</div></div></div>
-  <div class="card oppbox"><div><div class="label">Points adverses · manche ${s.inn}</div><div class="muted" style="font-size:14px">Total ${sum(s.opp)}</div></div>
+  <div class="card stack"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div style="min-width:0"><div class="label">Catcher</div><div class="num" style="font-size:24px;text-transform:uppercase">${s.catcher?esc(nm(s.catcher)):'—'}</div>${s.catcher&&s.df[s.catcher]?.pb?`<div class="muted" style="font-size:14px">${s.df[s.catcher].pb} passed ball(s)</div>`:''}</div>
+    <div class="row" style="flex-wrap:nowrap"><button class="btn small" data-a="catsheet">${s.catcher?'Changer':'Choisir'}</button>${s.catcher?`<button class="key out" style="min-height:52px;padding:0 14px" data-a="dp" data-v="PB"><b>PB</b><small>Passed ball</small></button>`:''}</div></div></div>
+  <div class="card stack"><div class="label">Attaque adverse · pour le live</div>
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap">
+      <div class="outs" aria-label="${s.do} out(s)" style="gap:8px">${[0,1,2].map(i=>`<i class="dot ${s.do>i?'on':''}" style="width:22px;height:22px"></i>`).join('')}</div>
+      <button class="key out" style="min-height:56px;padding:0 18px" data-a="dout" data-v="1"><b>+1 out</b><small>3 = on attaque</small></button>
+      <button class="btn small" data-a="dout" data-v="-1" ${s.do?'':'disabled'} aria-label="Enlever un out">−1</button>
+    </div>
+    <div class="label">Frappe adverse</div>
+    <div class="grid g4">${[['1B','Simple'],['2B','Double'],['3B','Triple'],['HR','Home run']].map(([k,l])=>`<button class="key" data-a="dhit" data-v="${k}"><b>${k}</b><small>${l}</small></button>`).join('')}</div>
+    <div class="row" style="flex-wrap:nowrap;gap:6px"><span class="label" style="flex:none">Coureurs</span>${['1re','2e','3e'].map((b,i)=>`<button class="btn small" style="flex:1;${s.dB[i]?'background:var(--accent);color:var(--accent-ink);border-color:var(--accent)':''}" data-a="drun" data-v="${i}">${s.dB[i]?'● ':''}${b}</button>`).join('')}</div>
+    <div class="oppbox"><div><div class="label">Points adverses · inning ${s.inn}</div><div class="muted" style="font-size:14px">Total ${sum(s.opp)}</div></div>
     <div class="row" style="flex-wrap:nowrap"><button class="round" data-a="opp" data-v="-1" aria-label="Retirer un point">−</button><div class="big">${s.opp[s.inn]||0}</div><button class="round" data-a="opp" data-v="1" aria-label="Ajouter un point">+</button></div></div>
-  <div class="card stack"><div class="row" style="justify-content:space-between"><div><div class="label">Erreurs de nos joueurs</div><div class="muted" style="font-size:14px">${(()=>{const l=s.log.filter(e=>e.t==='derr'&&e.inn===s.inn);return l.length?'Manche '+s.inn+' : '+l.map(e=>esc(nm(e.id))).join(', '):'Aucune cette manche'})()}</div></div><button class="btn" data-a="dersheet" style="border-color:var(--out);color:var(--out)">+ Erreur</button></div></div>
+    <p class="muted" style="margin:0;font-size:13px">Automatique : K de ton pitcher = out ; BB / HBP = coureur en 1re (et poussée des autres) ; WP / PB = les coureurs de 1re et 2e avancent (celui de 3e reste, touche la base s’il marque) ; frappe = coureurs avancent et points comptés. Touche une base pour corriger (stolen base, coureur out…).</p>
+  </div>
+  <div class="card stack"><div class="row" style="justify-content:space-between"><div><div class="label">Errors de nos joueurs</div><div class="muted" style="font-size:14px">${(()=>{const l=s.log.filter(e=>e.t==='derr'&&e.inn===s.inn);return l.length?'Inning '+s.inn+' : '+l.map(e=>esc(nm(e.id))).join(', '):'Aucune cet inning'})()}</div></div><button class="btn" data-a="dersheet" style="border-color:var(--out);color:var(--out)">+ Error</button></div></div>
   <button class="btn primary" data-a="endhalf">Fin de défense → on attaque</button>
   <div class="row" style="flex-wrap:nowrap"><button class="btn" style="flex:1" data-a="undo" ${m.events.length?'':'disabled'}>↶ Annuler</button><button class="btn" style="flex:1" data-a="fin">Terminer le match</button></div>`;
 }
 function firstV(m){
-  return `<div class="card stack" style="text-align:center"><div class="label">1re manche</div><h2 class="num" style="font-size:30px;text-transform:uppercase">On commence en…</h2>
+  return `<div class="card stack" style="text-align:center"><div class="label">1er inning</div><h2 class="num" style="font-size:30px;text-transform:uppercase">On commence en…</h2>
   <button class="plus" data-a="first" data-v="att">Attaque<div style="font:400 14px/1.3 var(--f-body);text-transform:none;margin-top:4px">on frappe en premier</div></button>
   <button class="plus" style="background:var(--warn-soft);color:var(--ink)" data-a="first" data-v="def">Défense<div style="font:400 14px/1.3 var(--f-body);text-transform:none;margin-top:4px">on est sur le terrain en premier</div></button>
   <p class="muted" style="margin:0;font-size:14px">Ensuite l’appli alterne attaque et défense toute seule.</p></div>`;
@@ -542,12 +573,12 @@ function overV(s){
 }
 
 function lineupV(m,s){
-  return `${s.pitcher?`<div class="card"><div class="label">Lanceur</div><b>${esc(nm(s.pitcher))}</b>${s.dh?` <span class="muted">· ne frappe pas, DH : ${esc(nm(s.dh))}</span>`:''}</div>`:''}
+  return `${s.pitcher?`<div class="card"><div class="label">Pitcher</div><b>${esc(nm(s.pitcher))}</b>${s.dh?` <span class="muted">· ne frappe pas, DH : ${esc(nm(s.dh))}</span>`:''}</div>`:''}
   <div class="label">Ordre actuel · touche « Remplacer » pour un changement</div>
   <div class="list">${s.lineup.map((id,i)=>`<div class="item ${i===s.bat&&s.half==='att'?'sel':''}"><span class="n">${i+1}</span><span class="grow"><b>${esc(nm(id))}</b>${s.dh===id?dhTag:''} <span class="muted">#${esc(P(id).num)}</span></span><button class="btn small" data-a="subsheet" data-v="${i}">Remplacer</button></div>`).join('')}</div>
   <div class="label">Remplaçants</div>
   <div class="chips">${bench(s).map(p=>`<span class="chip">${esc(p.name)}</span>`).join('')||'<span class="muted">Personne sur le banc.</span>'}</div>
-  ${s.log.filter(e=>e.t==='sub').length?`<div class="label">Changements faits</div>`+s.log.filter(e=>e.t==='sub').map(e=>`<div class="muted">Manche ${e.inn} : ${esc(nm(e.id))} remplace ${esc(nm(e.old))}</div>`).join(''):''}`;
+  ${s.log.filter(e=>e.t==='sub').length?`<div class="label">Changements faits</div>`+s.log.filter(e=>e.t==='sub').map(e=>`<div class="muted">Inning ${e.inn} : ${esc(nm(e.id))} remplace ${esc(nm(e.old))}</div>`).join(''):''}`;
 }
 function notesV(m,s){
   const notes=s.log.filter(e=>e.t==='note');
@@ -575,7 +606,7 @@ function recapV(m,s){
   const rows=recapRows(m,s);
   const T=rows.reduce((a,r)=>{for(const k of['pa','ab','h','d','t','hr','r','rbi','bb','hbp','k','sb','cs','e'])a[k]=(a[k]||0)+r[k];return a},{});
   const pcs=Object.entries(s.pc).filter(([,n])=>n>0);
-  return `<div class="tablewrap"><table><thead><tr><th class="l">Manche</th>${Array.from({length:inns},(_,i)=>`<th>${i+1}</th>`).join('')}<th>Pts</th></tr></thead><tbody>
+  return `<div class="tablewrap"><table><thead><tr><th class="l">Inning</th>${Array.from({length:inns},(_,i)=>`<th>${i+1}</th>`).join('')}<th>Pts</th></tr></thead><tbody>
     <tr><td class="l"><b>Dragons</b></td>${Array.from({length:inns},(_,i)=>`<td>${s.us[i+1]??(i+1<=s.inn?0:'')}</td>`).join('')}<td><b>${sum(s.us)}</b></td></tr>
     <tr><td class="l">${esc(m.opp)}</td>${Array.from({length:inns},(_,i)=>`<td>${s.opp[i+1]??(i+1<=s.inn?0:'')}</td>`).join('')}<td><b>${sum(s.opp)}</b></td></tr></tbody></table></div>
   <div class="label">Stats par joueur</div>
@@ -589,7 +620,7 @@ function recapV(m,s){
   <div class="card log">${logV(s)||'<span class="muted">Aucune action pour l’instant.</span>'}</div>
   <button class="btn" data-a="copy">Copier le récap (texte)</button>
   <button class="btn" data-a="scoreimg">Image du score à partager</button>
-  ${m.linkedMatchId?`<button class="btn primary" data-a="pushres">Envoyer le score dans Résultats</button><p class="muted" style="margin:-6px 0 0;font-size:13px">Remplace le score par manche de « ${esc((db.cal.find(x=>x.id===m.linkedMatchId)||{}).label||'ce match')} » dans l’appli.</p>`:''}`;
+  ${m.linkedMatchId?`<button class="btn primary" data-a="pushres">Envoyer le score dans Résultats</button><p class="muted" style="margin:-6px 0 0;font-size:13px">Remplace le score par inning de « ${esc((db.cal.find(x=>x.id===m.linkedMatchId)||{}).label||'ce match')} » dans l’appli.</p>`:''}`;
 }
 function defTable(m,s){
   const ids=[...new Set([...Object.keys(s.df),...Object.keys(s.pc).filter(k=>s.pc[k]>0),...Object.keys(s.st).filter(k=>s.st[k].e)])];
@@ -598,19 +629,19 @@ function defTable(m,s){
 }
 function logLine(e){
   if(e.t==='pa')return`<b>${esc(nm(e.id))}</b> — ${RES[e.res][1]} ${showCount()?`<span class="muted">(${e.count})</span>`:''}${e.runs.length?` <span class="runs">· marque : ${e.runs.map(nm).map(esc).join(', ')}</span>`:''}`;
-  if(e.t==='run'){const b=['1re','2e','3e'][e.base];return e.a==='cs'?`<span style="color:var(--out)">${esc(nm(e.id))} retiré en tentative de vol (depuis la ${b})</span>`:e.a==='out'?`${esc(nm(e.id))} retiré en ${b} base`:['wp','pb'].includes(e.a)?`${esc(nm(e.id))} ${e.to>=3?'marque':'avance en '+['','2e','3e'][e.to]} (${e.a==='wp'?'lancer sauvage':'balle passée'})`:e.a==='sb'?`${esc(nm(e.id))} vole ${e.to>=3?'le marbre':['','la 2e','la 3e'][e.to]}`:e.to>=3?`<span class="runs">${esc(nm(e.id))} marque</span>`:`${esc(nm(e.id))} avance en ${['','2e','3e'][e.to]}`}
-  if(e.t==='wp')return`${e.kind==='WP'?'Lancer sauvage':'Balle passée'} : `+e.moved.map(([id,to])=>to>=3?`<span class="runs">${esc(nm(id))} marque</span>`:`${esc(nm(id))} en ${['','2e','3e'][to]}`).join(', ');
+  if(e.t==='run'){const b=['1re','2e','3e'][e.base];return e.a==='cs'?`<span style="color:var(--out)">${esc(nm(e.id))} pris en vol (depuis la ${b})</span>`:e.a==='out'?`${esc(nm(e.id))} out en ${b} base`:['wp','pb'].includes(e.a)?`${esc(nm(e.id))} ${e.to>=3?'marque':'avance en '+['','2e','3e'][e.to]} (${e.a==='wp'?'wild pitch':'passed ball'})`:e.a==='sb'?`${esc(nm(e.id))} vole ${e.to>=3?'le marbre':['','la 2e','la 3e'][e.to]}`:e.to>=3?`<span class="runs">${esc(nm(e.id))} marque</span>`:`${esc(nm(e.id))} avance en ${['','2e','3e'][e.to]}`}
+  if(e.t==='wp')return`${e.kind==='WP'?'Wild pitch':'Passed ball'} : `+e.moved.map(([id,to])=>to>=3?`<span class="runs">${esc(nm(id))} marque</span>`:`${esc(nm(id))} en ${['','2e','3e'][to]}`).join(', ');
   if(e.t==='sub')return`Changement : ${esc(nm(e.id))} remplace ${esc(nm(e.old))}`;
   if(e.t==='dp')return`${esc(nm(e.id))} : ${DPL[e.kind]}`;
-  if(e.t==='cat')return`Receveur : ${esc(nm(e.id))}`;
-  if(e.t==='derr')return`<span style="color:var(--out)">Erreur défensive : ${esc(nm(e.id))}</span>`;
-  if(e.t==='pch')return`Lanceur : ${esc(nm(e.id))}`;
+  if(e.t==='cat')return`Catcher : ${esc(nm(e.id))}`;
+  if(e.t==='derr')return`<span style="color:var(--out)">Error : ${esc(nm(e.id))}</span>`;
+  if(e.t==='pch')return`Pitcher : ${esc(nm(e.id))}`;
   if(e.t==='note')return`Note : ${esc(e.txt)}`;
   return null;
 }
 function logV(s){
   let out='',cur='';
-  for(const e of s.log){const l=logLine(e);if(!l)continue;const k=e.inn+e.half;if(k!==cur){cur=k;out+=`<div class="inn">${e.half===s.first?'Haut':'Bas'} ${e.inn} · ${e.half==='att'?'attaque':'défense'}</div>`}out+=`<div class="e"><span>${l}</span></div>`}
+  for(const e of s.log){const l=logLine(e);if(!l)continue;const k=e.inn+e.half;if(k!==cur){cur=k;out+=`<div class="inn">${e.half===s.first?'Top':'Bottom'} ${e.inn} · ${e.half==='att'?'attaque':'défense'}</div>`}out+=`<div class="e"><span>${l}</span></div>`}
   return out;
 }
 function recapText(){
@@ -631,9 +662,9 @@ function runnerSheet(i){
   sheet(`<h3>${esc(nm(id))} · ${['1re','2e','3e'][i]} base</h3>
   <div class="list">
     ${next?`<button class="item" data-a="r" data-v="${i}:adv"><span class="grow"><b>Avance en ${['','2e','3e'][i+1]}</b><div class="muted" style="font-size:14px">sur le jeu</div></span></button>`:''}
-    ${next?`<button class="item" data-a="r" data-v="${i}:sb"><span class="grow"><b>Vol de base</b></span></button>`:''}
+    ${next?`<button class="item" data-a="r" data-v="${i}:sb"><span class="grow"><b>Stolen base</b></span></button>`:''}
     <button class="item" data-a="r" data-v="${i}:score"><span class="grow"><b>Marque</b><div class="muted" style="font-size:14px">rentre au marbre</div></span></button>
-    ${i===2?`<button class="item" data-a="r" data-v="${i}:sb"><span class="grow"><b>Vol du marbre</b></span></button>`:''}
+    ${i===2?`<button class="item" data-a="r" data-v="${i}:sb"><span class="grow"><b>Steal home</b></span></button>`:''}
     <button class="item" data-a="r" data-v="${i}:cs"><span class="grow"><b style="color:var(--out)">Pris en tentative de vol</b></span></button>
     <button class="item" data-a="r" data-v="${i}:out"><span class="grow"><b style="color:var(--out)">Retiré</b></span></button>
   </div><button class="btn" data-a="close">Fermer</button>`);
@@ -651,11 +682,11 @@ function derSheet(){
 }
 function catSheet(){
   const s=replay(M());
-  sheet(`<h3>Qui est receveur ?</h3><div class="list">${db.roster.map(p=>`<button class="item ${s.catcher===p.id?'sel':''}" data-a="cat" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span></button>`).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
+  sheet(`<h3>Qui est catcher ?</h3><div class="list">${db.roster.map(p=>`<button class="item ${s.catcher===p.id?'sel':''}" data-a="cat" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span></button>`).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
 }
 function pchSheet(){
   const m=M(),s=replay(m),lim=+db.settings.limit||90;
-  sheet(`<h3>Qui lance ?</h3><div class="list">${db.roster.map(p=>{const n=(s.pc[p.id]||0)+dayPitches(p.id,m.date,m.id);return`<button class="item ${s.pitcher===p.id?'sel':''}" data-a="pch" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span><span class="num" style="font-size:18px;color:${n>=lim?'var(--out)':'var(--muted)'}">${n?n+' aujourd’hui':''}</span></button>`}).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
+  sheet(`<h3>Qui est pitcher ?</h3><div class="list">${db.roster.map(p=>{const n=(s.pc[p.id]||0)+dayPitches(p.id,m.date,m.id);return`<button class="item ${s.pitcher===p.id?'sel':''}" data-a="pch" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span><span class="num" style="font-size:18px;color:${n>=lim?'var(--out)':'var(--muted)'}">${n?n+' aujourd’hui':''}</span></button>`}).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
 }
 
 /* ============ Actions ============ */
@@ -664,7 +695,7 @@ document.addEventListener('click',ev=>{
   const a=t.dataset.a,v=t.dataset.v;
   if(a==='close'){if(ev.target===t||t.tagName==='BUTTON')close();return}
   const m=M();
-  const MUT=['p','pa','r','runner','sub','subsheet','pch','pchsheet','pt','opp','endhalf','fin','undo','note','notetxt','dp','der','dersheet','cat','catsheet','first'];
+  const MUT=['dout','db','dhit','drun','dr','p','pa','r','runner','sub','subsheet','pch','pchsheet','pt','opp','endhalf','fin','undo','note','notetxt','dp','der','dersheet','cat','catsheet','first'];
   if(view==='live'&&m&&!mine(m)&&MUT.includes(a)){toast('Lecture seule · touche « Prendre la main » pour saisir');return}
   switch(a){
     case'live':
@@ -699,18 +730,31 @@ document.addEventListener('click',ev=>{
     case'pchsheet':pchSheet();break;
     case'catsheet':catSheet();break;
     case'cat':close();push({k:'CAT',id:v});break;
-    case'dp':push({k:'DP',kind:v});toast(DPL[v]);break;
+    case'dp':{const st0=replay(m),before=st0.half;push({k:'DP',kind:v});toast(before==='def'&&replay(M()).half==='att'?'3 outs · on passe en attaque':(v==='WP'||v==='PB')&&before==='def'&&st0.dB[2]?'Coureur en 3e : touche la base s’il a marqué':DPL[v]);break}
     case'dersheet':derSheet();break;
-    case'der':close();push({k:'DE',id:v});toast('Erreur notée : '+nm(v));break;
+    case'der':close();push({k:'DE',id:v});toast('Error notée : '+nm(v));break;
     case'pch':close();push({k:'PCH',id:v});break;
     case'pt':push({k:'PT',d:+v});
       {const s=replay(M()),lim=+db.settings.limit||90,n=(s.pc[s.pitcher]||0)+dayPitches(s.pitcher,m.date,m.id);if(+v>0&&n===lim)toast(`Limite de ${lim} atteinte`);else if(+v>0&&n===(+db.settings.warn||75))toast(`${lim-n} lancers restants`)}
       break;
+    case'dout':{const before=replay(m).half;push({k:'DOUT',d:+v});if(before==='def'&&replay(M()).half==='att')toast('3 outs · on passe en attaque');break}
+    case'db':push({k:'DB',i:+v});break;
+    case'dhit':push({k:'DHIT',v});toast({'1B':'Simple adverse','2B':'Double adverse','3B':'Triple adverse','HR':'Home run adverse'}[v]);break;
+    case'drun':{const st=replay(m),i=+v;
+      if(!st.dB[i]){push({k:'DR',i,a:'add'});break}
+      const nxt=i<2&&!st.dB[i+1];
+      sheet(`<h3>Coureur adverse en ${['1re','2e','3e'][i]}</h3><div class="list">
+        ${i<2?`<button class="item" data-a="dr" data-v="${i}:adv" ${nxt?'':'disabled'}><span class="grow"><b>Avance en ${['2e','3e'][i]}</b><div class="muted" style="font-size:14px">stolen base, sur le jeu…${nxt?'':' (base occupée)'}</div></span></button>`:''}
+        <button class="item" data-a="dr" data-v="${i}:score"><span class="grow"><b>Marque</b><div class="muted" style="font-size:14px">+1 point adverse</div></span></button>
+        <button class="item" data-a="dr" data-v="${i}:out"><span class="grow"><b style="color:var(--out)">Out</b><div class="muted" style="font-size:14px">pris en vol, éliminé sur base… (+1 out)</div></span></button>
+        <button class="item" data-a="dr" data-v="${i}:del"><span class="grow"><b>Enlever</b><div class="muted" style="font-size:14px">erreur de saisie</div></span></button>
+      </div><button class="btn" data-a="close">Fermer</button>`);break}
+    case'dr':{const[i,a]=v.split(':');close();const before=replay(m).half;push({k:'DR',i:+i,a});if(a==='out'&&before==='def'&&replay(M()).half==='att')toast('3 outs · on passe en attaque');break}
     case'opp':push({k:'OPP',inn:replay(m).inn,d:+v});break;
     case'endhalf':push({k:'END'});break;
     case'fin':push({k:'FIN'});break;
     case'undo':undo();break;
-    case'wp':push({k:v});toast(v==='WP'?'Lancer sauvage':'Balle passée');break;
+    case'wp':push({k:v});toast(v==='WP'?'Wild pitch':'Passed ball');break;
     case'togcount':db.settings.count=!showCount();save();render();break;
     case'note':push({k:'N',txt:v});toast('Note ajoutée');break;
     case'notetxt':{const x=document.getElementById('ntxt').value.trim();if(x)push({k:'N',txt:x});break}

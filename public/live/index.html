@@ -132,7 +132,7 @@ function render(){
   if(!g){app.innerHTML=`<div class="top"><div class="brand"><div class="logo">DR</div>Dragons de Ronchin</div></div><div class="empty"><h1>Pas de match en direct</h1>Reviens pendant le prochain match des Dragons : le score s’affichera ici tout seul.</div>`;return}
   const us=sum(g.us),them=sum(g.them),inns=Math.max(7,g.inn||1);
   const ourFirst=g.first==='att';
-  const half=g.over?'':(g.half===g.first?'Haut':'Bas')+' '+(g.inn===1?'1re':g.inn+'e');
+  const half=g.over?'':(g.half===g.first?'Top':'Bottom')+' '+g.inn;
   const tabs=games.length>1?`<div class="tabs">${games.map(x=>`<button class="${x.id===cur?'on':''}" data-g="${esc(x.id)}">Dragons – ${esc(x.opp)}</button>`).join('')}</div>`:'';
   let mid='';
   if(g.over){
@@ -140,11 +140,16 @@ function render(){
       (g.rows&&g.rows.length?`<div class="card stats"><table><thead><tr><th class="l">Joueur</th><th>H/AB</th><th>R</th><th>RBI</th><th>HR</th><th>BB</th><th>SB</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td class="l">${esc(r[0])}</td><td>${+r[1]}/${+r[2]}</td><td>${+r[3]}</td><td>${+r[4]}</td><td>${+r[5]}</td><td>${+r[6]}</td><td>${+r[7]}</td></tr>`).join('')}</tbody></table></div>`:'');
   }else if(g.att){
     mid=`<div class="play"><div>${diamond(g.bases||[])}</div><div>
-      <div class="lbl">Au bâton</div>${g.batter?`<div class="big">${fmtName(g.batter)}</div>`:''}
+      <div class="lbl">At bat</div>${g.batter?`<div class="big">${fmtName(g.batter)}</div>`:''}
       ${g.batterLine?`<div class="lbl" style="margin-top:2px">Aujourd’hui : ${esc(g.batterLine)}</div>`:''}
       ${g.next?`<div class="lbl" style="margin-top:8px">Ensuite : ${esc(g.next)}</div>`:''}</div></div>`;
   }else{
-    mid=`<div class="card def"><div class="big">Les Dragons sont en défense</div>${g.pitcher?`<div class="lbl" style="margin-top:6px">Au monticule : ${esc(g.pitcher)}</div>`:''}<div class="lbl" style="margin-top:4px">${+(g.them?.[g.inn]||0)} point(s) adverse(s) cette manche</div></div>`;
+    const db=(g.dBases||[]).map(x=>x?' ':null);
+    mid=`<div class="play"><div>${diamond(db)}</div><div>
+      <div class="big" style="font-size:19px">Les Dragons sont en défense</div>
+      ${g.pitcher?`<div class="lbl" style="margin-top:6px">Pitcher : ${esc(g.pitcher)}</div>`:''}
+      <div class="lbl" style="margin-top:6px">Outs${[0,1,2].map(i=>`<span class="o ${(g.dOuts||0)>i?'on':''}"></span>`).join('')}</div>
+      <div class="lbl" style="margin-top:6px">${+(g.them?.[g.inn]||0)} point(s) adverse(s) cet inning</div></div></div>`;
   }
   const batted=ourRow=>g.over?true:(ourRow?(g.att||(ourFirst&&!g.att)):(!g.att||(!ourFirst&&g.att)));
   const row=(name,o,ourRow)=>`<tr><td class="l">${esc(name)}</td>${Array.from({length:inns},(_,i)=>{const k=i+1,v=o?.[k];
@@ -156,9 +161,9 @@ function render(){
     <div class="mid">${g.over?'<b>Final</b>':`<b>${half}</b>${g.att?'Attaque':'Défense'}`}</div>
     <div style="text-align:right"><div class="team">${esc(g.opp)}</div><div class="pts">${them}</div></div>
   </div>
-  ${!g.over&&g.att?`<div class="meta"><span>Retraits${[0,1].map(i=>`<span class="o ${g.outs>i?'on':''}"></span>`).join('')}</span>${g.count?`<span>Compte ${+g.count[0]}-${+g.count[1]}</span>`:''}</div>`:''}</div>
+  ${!g.over&&g.att?`<div class="meta"><span>Outs${[0,1].map(i=>`<span class="o ${g.outs>i?'on':''}"></span>`).join('')}</span>${g.count?`<span>Compte ${+g.count[0]}-${+g.count[1]}</span>`:''}</div>`:''}</div>
   ${mid}
-  <div class="card ls"><table><thead><tr><th class="l">Manche</th>${Array.from({length:inns},(_,i)=>`<th class="${i+1===g.inn&&!g.over?'cur':''}">${i+1}</th>`).join('')}<th>R</th></tr></thead>
+  <div class="card ls"><table><thead><tr><th class="l">Inning</th>${Array.from({length:inns},(_,i)=>`<th class="${i+1===g.inn&&!g.over?'cur':''}">${i+1}</th>`).join('')}<th>R</th></tr></thead>
   <tbody>${ourFirst?row('Dragons',g.us,true)+row(shortOpp(g.opp),g.them,false):row(shortOpp(g.opp),g.them,false)+row('Dragons',g.us,true)}</tbody></table></div>
   <div class="feedh">Dernières actions</div>
   <div class="feed">${(g.feed||[]).slice(0,12).map(f=>{const run=f.k==='RUN',dim=['K','GO','FO','OUT','FC','SAC'].includes(f.k);const t=esc(f.txt);
@@ -204,7 +209,7 @@ const VIS={
   'KDEF':()=>`<svg viewBox="0 0 160 90" width="160" height="90"><text x="80" y="76" text-anchor="middle" font-size="86" font-weight="600" fill="${G}" style="transform-origin:80px 45px;animation:pop .4s .1s both">K</text>${[0,1,2].map(i=>`<path d="M${30+i*44} 84 l22 0" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="60" style="animation:slash .25s ${0.45+i*0.15}s forwards"/>`).join('')}</svg>`,
   'RUN':()=>`<svg viewBox="0 0 160 90" width="160" height="90"><path d="M60 80 h40 v-16 l-20 -20 l-20 20 z" fill="${C}" style="transform-origin:80px 60px;animation:pop .4s .1s both"/><circle cx="80" cy="22" r="10" fill="${G}" style="animation:pop .4s .4s both;transform-origin:80px 22px"/></svg>`
 };
-const TITLE={'1B':'Simple !','2B':'Double !','3B':'Triple !','HR':'Circuit !','BB':'But sur balles','HBP':'Touché !','SB':'Vol de base !','KDEF':'Retrait sur prises','RUN':'Point !'};
+const TITLE={'1B':'Simple !','2B':'Double !','3B':'Triple !','HR':'Home run !','BB':'Walk','HBP':'Hit by pitch !','SB':'Stolen base !','KDEF':'Strikeout !','RUN':'Point !'};
 const CONF=new Set(['HR','KDEF']);
 let q=[],showing=false,ptm;
 function queueNew(g){
