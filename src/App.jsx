@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
 import { callApi } from "./api.js";
 
 const LOGO_DATA_URI = "data:image/jpeg;base64,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";
@@ -165,10 +165,24 @@ const FIELD_POSITIONS = [
 
 const TOKEN_STORAGE_KEY = "dragons-session-token";
 
+/* Saisons : la liste officielle vient du serveur (state.seasons) et la saison
+   en cours (state.currentSeason) sert de filtre par défaut dans tous les onglets. */
+const SeasonContext = createContext({ seasons: [], current: CURRENT_SEASON });
+function useSeasonList(items) {
+  const ctx = useContext(SeasonContext);
+  return useMemo(() => {
+    const set = new Set(ctx.seasons || []);
+    (items || []).forEach((m) => set.add(m.season || "—"));
+    const list = Array.from(set).sort((a, b) => b.localeCompare(a));
+    list.current = list.includes(ctx.current) ? ctx.current : list[0];
+    return list;
+  }, [items, ctx.seasons, ctx.current]);
+}
+
 function getLineup(state, matchId) {
-  const l = state.lineups[matchId] || { defense: {}, batting: [] };
-  const batting = Array.from({ length: 9 }, (_, i) => l.batting[i] || "");
-  return { defense: l.defense || {}, batting };
+  const l = (state.lineups || {})[matchId] || { defense: {}, batting: [] };
+  const batting = Array.from({ length: 9 }, (_, i) => (l.batting || [])[i] || "");
+  return { ...l, defense: l.defense || {}, batting };
 }
 
 /* ------------------------------------------------------------------ */
@@ -394,8 +408,16 @@ export default function DragonsApp() {
     await callMutation("updateMatchField", { matchId, field, value });
   }
 
-  async function addMatch() {
-    await callMutation("addMatch", {});
+  async function addSeason(season, makeCurrent) {
+    return callMutation("addSeason", { season, makeCurrent });
+  }
+
+  async function setCurrentSeason(season) {
+    return callMutation("setCurrentSeason", { season });
+  }
+
+  async function addMatch(season) {
+    await callMutation("addMatch", { season });
   }
 
   async function deleteMatch(matchId) {
@@ -410,8 +432,8 @@ export default function DragonsApp() {
     await callMutation("setInning", { matchId, team, inningIndex, value });
   }
 
-  async function addTeam() {
-    await callMutation("addTeam", {});
+  async function addTeam(season) {
+    await callMutation("addTeam", { season });
   }
 
   async function updateTeamField(teamId, field, value) {
@@ -483,7 +505,10 @@ export default function DragonsApp() {
     );
   }
 
+  const seasonCtx = { seasons: state.seasons || [], current: state.currentSeason || CURRENT_SEASON };
+
   return (
+    <SeasonContext.Provider value={seasonCtx}>
     <div className="dragons-app">
       <style>{CSS}</style>
 
@@ -563,6 +588,12 @@ export default function DragonsApp() {
                   Ma présence
                 </button>
                 <button
+                  className={screen === "composition" ? "tsw active" : "tsw"}
+                  onClick={() => setScreen("composition")}
+                >
+                  Composition
+                </button>
+                <button
                   className={screen === "roster" ? "tsw active" : "tsw"}
                   onClick={() => setScreen("roster")}
                 >
@@ -634,6 +665,10 @@ export default function DragonsApp() {
           />
         )}
 
+        {session && screen === "roster" && isStaffRole(session.role) && (
+          <RelanceCard state={state} />
+        )}
+
         {session && screen === "roster" && (
           <PresenceRosterView state={state} />
         )}
@@ -651,7 +686,7 @@ export default function DragonsApp() {
             standings={state.standings}
             canEdit={isStaffRole(session.role)}
             onUpdateField={(teamId, field, value) => updateTeamField(teamId, field, value)}
-            onAddTeam={() => addTeam()}
+            onAddTeam={(season) => addTeam(season)}
             onDeleteTeam={(teamId) => deleteTeam(teamId)}
             busy={busy}
           />
@@ -679,21 +714,21 @@ export default function DragonsApp() {
           />
         )}
 
-        {session && screen === "composition" && isStaffRole(session.role) && (
-          <LineupView
-            state={state}
-            actingUser={session.username}
-            onSetDefense={(matchId, poste, playerId) => setDefenseSlot(matchId, poste, playerId)}
-            onSetBatting={(matchId, index, playerId) => setBattingSlot(matchId, index, playerId)}
-            busy={busy}
-          />
+        {session && screen === "coach" && session.role === "owner" && (
+          <BackupPanel token={authToken} onRestored={(st) => setState(st)} />
+        )}
+
+        {session && screen === "composition" && (
+          <LineupView state={state} isStaff={isStaffRole(session.role)} />
         )}
 
         {session && screen === "matches" && isStaffRole(session.role) && (
           <MatchesView
             matches={state.matches}
+            onAddSeason={addSeason}
+            onSetCurrentSeason={setCurrentSeason}
             onUpdateField={(matchId, field, value) => updateMatchField(matchId, field, value)}
-            onAddMatch={() => addMatch()}
+            onAddMatch={(season) => addMatch(season)}
             onDeleteMatch={(matchId) => deleteMatch(matchId)}
             onReorderMatches={(orderedIds) => reorderMatches(orderedIds)}
             busy={busy}
@@ -707,6 +742,7 @@ export default function DragonsApp() {
         passe important.
       </footer>
     </div>
+    </SeasonContext.Provider>
   );
 }
 
@@ -917,8 +953,8 @@ function PlayerView({ player, matches, presence, positions, onSetPresence, onSet
   async function handleChangePassword() {
     setPwMsg("");
     setPwError("");
-    if (!newPassword || newPassword.length < 4) {
-      setPwError("Le nouveau mot de passe doit faire au moins 4 caractères.");
+    if (!newPassword || newPassword.length < 6) {
+      setPwError("Le nouveau mot de passe doit faire au moins 6 caractères.");
       return;
     }
     if (pwMismatch) {
@@ -1079,11 +1115,8 @@ function CoachView({
   const [editNom, setEditNom] = useState("");
   const [editPrenom, setEditPrenom] = useState("");
   const [suiviSeasonFilter, setSuiviSeasonFilter] = useState(null);
-  const suiviSeasons = useMemo(() => {
-    const set = new Set(state.matches.map((m) => m.season || "—"));
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [state.matches]);
-  const effectiveSuiviSeason = suiviSeasonFilter ?? (suiviSeasons[0] || "all");
+  const suiviSeasons = useSeasonList(state.matches);
+  const effectiveSuiviSeason = suiviSeasonFilter ?? (suiviSeasons.current || "all");
   const suiviMatches = useMemo(
     () => state.matches.filter((m) => effectiveSuiviSeason === "all" || (m.season || "—") === effectiveSuiviSeason),
     [state.matches, effectiveSuiviSeason]
@@ -1683,137 +1716,270 @@ function FieldDiagram({ defense, roster }) {
   );
 }
 
-function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
-  const [matchId, setMatchId] = useState(state.matches[0].id);
-  const lineup = getLineup(state, matchId);
-
-  const eligible = useMemo(() => {
-    return state.roster
-      .map((p) => ({
-        ...p,
-        status: (state.presence[p.id] || {})[matchId],
-        prefs: [
-          (state.positions[p.id] || {}).pos1,
-          (state.positions[p.id] || {}).pos2,
-          (state.positions[p.id] || {}).pos3,
-        ].filter(Boolean),
-      }))
-      .filter((p) => p.status === "present" || p.status === "reserve")
-      .sort((a, b) => (a.status === b.status ? 0 : a.status === "present" ? -1 : 1));
-  }, [state, matchId]);
-
-  function playerLabel(p) {
-    return `${p.prenom} ${p.nom}${p.numero ? " #" + p.numero : ""}`;
-  }
-
-  const usedInDefense = useMemo(
-    () => new Set(Object.values(lineup.defense).filter(Boolean)),
-    [lineup.defense]
-  );
-  const usedInBatting = useMemo(
-    () => new Set(lineup.batting.filter(Boolean)),
-    [lineup.batting]
-  );
-
-  async function handleDefenseChange(posteKey, playerId) {
-    if (playerId) {
-      const existingSlot = Object.entries(lineup.defense).find(
-        ([slot, pid]) => pid === playerId && slot !== posteKey
-      );
-      if (existingSlot) {
-        await onSetDefense(matchId, existingSlot[0], "");
-      }
+/* Relance des présences : message prêt à coller dans le groupe WhatsApp. */
+function RelanceCard({ state }) {
+  const ctx = useContext(SeasonContext);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const upcoming = useMemo(() => state.matches
+    .filter((m) => !m.cancelled && (m.season || CURRENT_SEASON) === ctx.current)
+    .map((m) => ({ m, d: matchDateOf(m) }))
+    .filter(({ d }) => !d || d.getTime() >= today.getTime())
+    .sort((a, b) => (a.d ? a.d.getTime() : Infinity) - (b.d ? b.d.getTime() : Infinity)), [state.matches, ctx.current]);
+  const [matchId, setMatchId] = useState(null);
+  const [withReserve, setWithReserve] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const cur = upcoming.find((x) => x.m.id === matchId) || upcoming[0];
+  if (!cur) return null;
+  const m = cur.m;
+  const short = (p) => `${p.prenom}${p.nom ? " " + p.nom[0] + "." : ""}`;
+  const st = (p) => ((state.presence[p.id] || {})[m.id]) || "";
+  const noAnswer = state.roster.filter((p) => !st(p));
+  const reserve = state.roster.filter((p) => st(p) === "reserve");
+  const counts = { present: state.roster.filter((p) => st(p) === "present").length, absent: state.roster.filter((p) => st(p) === "absent").length };
+  const when = cur.d ? cur.d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : m.date;
+  const lines = [
+    `📣 Présences — ${m.label}${when ? " · " + when : ""}${m.opponent ? " · vs " + m.opponent : ""}`,
+    "",
+    noAnswer.length ? `Pas encore répondu (${noAnswer.length}) : ${noAnswer.map(short).join(", ")}` : "Tout le monde a répondu, merci ! 🙌",
+  ];
+  if (withReserve && reserve.length) lines.push(`Sous réserve, à confirmer (${reserve.length}) : ${reserve.map(short).join(", ")}`);
+  if (noAnswer.length || (withReserve && reserve.length)) lines.push("", `Merci de remplir ta présence sur ${window.location.origin} 🙏`);
+  const text = lines.join("\n");
+  async function copy() {
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) {
+      const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); } catch (err) { /* sélection manuelle */ } t.remove();
     }
-    await onSetDefense(matchId, posteKey, playerId);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  }
+  return (
+    <div className="card">
+      <h2>Relance WhatsApp</h2>
+      <select className="match-select" value={m.id} onChange={(e) => setMatchId(e.target.value)}>
+        {upcoming.map(({ m: x }) => <option key={x.id} value={x.id}>{x.label}{x.opponent ? ` vs ${x.opponent}` : ""} — {x.date || "date à définir"}</option>)}
+      </select>
+      <div className="hint" style={{ marginBottom: 8 }}>
+        {counts.present} présent(s) · {reserve.length} sous réserve · {counts.absent} absent(s) · {noAnswer.length} sans réponse
+      </div>
+      <label className="hint" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, cursor: "pointer" }}>
+        <input type="checkbox" checked={withReserve} onChange={(e) => setWithReserve(e.target.checked)} />
+        Ajouter aussi les « sous réserve » à confirmer
+      </label>
+      <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.2)", borderRadius: 8, padding: 10, margin: "0 0 10px", userSelect: "text" }}>{text}</pre>
+      <button className="btn-primary small" onClick={copy}>{copied ? "Copié ✓" : "Copier le message"}</button>
+    </div>
+  );
+}
+
+/* Sauvegardes — compte propriétaire uniquement (vérifié côté serveur). */
+function BackupPanel({ token, onRestored }) {
+  const [days, setDays] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [pending, setPending] = useState(null); // sauvegarde chargée, en attente de confirmation
+  const [confirmText, setConfirmText] = useState("");
+  const [working, setWorking] = useState(false);
+
+  useEffect(() => {
+    callApi({ action: "listBackups", token }).then((r) => setDays(r.backups || [])).catch(() => setDays([]));
+  }, [token]);
+
+  function download(obj, name) {
+    const blob = new Blob([JSON.stringify(obj, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  async function get(day) {
+    setWorking(true); setMsg("");
+    try {
+      const r = await callApi({ action: "getBackup", token, day: day || undefined });
+      download(r.backup, `dragons-sauvegarde-${day || new Date().toISOString().slice(0, 10)}.json`);
+      setMsg("Sauvegarde téléchargée. Garde-la en lieu sûr : elle contient les comptes.");
+    } catch (e) { setMsg(e.message); }
+    setWorking(false);
+  }
+  function pick(file) {
+    if (!file) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      try {
+        const b = JSON.parse(fr.result);
+        if (b.kind !== "dragons-backup") throw new Error();
+        setPending(b); setConfirmText(""); setMsg("");
+      } catch (e) { setMsg("Ce fichier n'est pas une sauvegarde de l'appli Dragons."); }
+    };
+    fr.readAsText(file);
+  }
+  async function restore() {
+    setWorking(true);
+    try {
+      const r = await callApi({ action: "restoreBackup", token, backup: pending });
+      onRestored(r.state); setPending(null);
+      setMsg(`Sauvegarde restaurée (${r.scoresheets} feuille(s) de match). L'état d'avant a été mis de côté sur le serveur.`);
+    } catch (e) { setMsg(e.message); }
+    setWorking(false);
   }
 
-  async function handleBattingChange(index, playerId) {
-    if (playerId) {
-      const existingIndex = lineup.batting.findIndex((pid, i) => pid === playerId && i !== index);
-      if (existingIndex !== -1) {
-        await onSetBatting(matchId, existingIndex, "");
-      }
-    }
-    await onSetBatting(matchId, index, playerId);
+  return (
+    <div className="card">
+      <h2>Sauvegardes</h2>
+      <div className="hint" style={{ marginBottom: 10 }}>
+        Une copie automatique est faite chaque jour où l'appli est modifiée (30 jours conservés).
+        Télécharge aussi une sauvegarde complète de temps en temps et garde-la hors de Netlify.
+      </div>
+      <div className="matches-toolbar" style={{ flexWrap: "wrap" }}>
+        <button className="btn-primary small" disabled={working} onClick={() => get(null)}>Télécharger une sauvegarde complète</button>
+        {days && days.length > 0 && (
+          <select className="match-select" style={{ margin: 0, maxWidth: 260 }} defaultValue=""
+            onChange={(e) => { if (e.target.value) get(e.target.value); e.target.value = ""; }}>
+            <option value="">Copies automatiques…</option>
+            {days.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
+        <label className="btn-ghost small" style={{ cursor: "pointer" }}>
+          Restaurer depuis un fichier
+          <input type="file" accept=".json,application/json" hidden onChange={(e) => { pick(e.target.files[0]); e.target.value = ""; }} />
+        </label>
+      </div>
+      {pending && (
+        <div className="hint" style={{ marginTop: 12, border: "1px solid var(--bad)", borderRadius: 8, padding: 10 }}>
+          Restaurer remplace <b>toutes</b> les données actuelles (comptes, présences, matchs, compositions)
+          par celles du {String(pending.exportedAt || "").slice(0, 10) || "fichier"}. Tape <b>RESTAURER</b> pour confirmer.
+          <div className="matches-toolbar" style={{ marginTop: 8 }}>
+            <input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="RESTAURER" style={{ maxWidth: 160 }} />
+            <button className="btn-primary small" disabled={working || confirmText !== "RESTAURER"} onClick={restore}>Restaurer</button>
+            <button className="btn-ghost small" onClick={() => setPending(null)}>Annuler</button>
+          </div>
+        </div>
+      )}
+      {msg && <div className="hint" style={{ marginTop: 8 }}>{msg}</div>}
+    </div>
+  );
+}
+
+/* Date réelle d'un match ("12 avril", "12/04", "2027-04-12") — l'année vient de la saison. */
+function matchDateOf(m) {
+  const str = String(m.date || "").toLowerCase().trim();
+  if (!str) return null;
+  const year = parseInt(String(m.season || CURRENT_SEASON).slice(0, 4), 10) || new Date().getFullYear();
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
+  const num = str.match(/(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?/);
+  if (num) { let y = num[3] ? +num[3] : year; if (y < 100) y += 2000; return new Date(y, +num[2] - 1, +num[1]); }
+  const fr = str.match(/(\d{1,2})\s*(?:er)?\s+([a-zéèêûôîà]+)/);
+  if (!fr) return null;
+  const mi = FR_MONTHS.findIndex((x) => x === fr[2] || x.startsWith(fr[2]) || fr[2].startsWith(x.slice(0, 4)));
+  return mi === -1 ? null : new Date(year, mi, +fr[1]);
+}
+const DAY_MS = 24 * 60 * 60 * 1000;
+const COMPO_KEEP_DAYS = 3; // un match passé reste 3 jours dans Composition, ensuite seulement dans Historique
+
+/* Composition — lecture seule. Le staff la prépare dans « Compo & changements »
+   puis l'envoie ici ; les joueurs la voient à partir de 2 jours avant le match. */
+function LineupView({ state, isStaff }) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const list = useMemo(() => {
+    return state.matches
+      .filter((m) => !m.cancelled)
+      .map((m) => ({ m, d: matchDateOf(m), lu: (state.lineups || {})[m.id] }))
+      .filter(({ d, lu }) => (d ? d.getTime() >= today.getTime() - COMPO_KEEP_DAYS * DAY_MS : isStaff))
+      .filter(({ lu }) => isStaff || (lu && (lu.batting || []).some(Boolean)))
+      .sort((a, b) => (a.d ? a.d.getTime() : Infinity) - (b.d ? b.d.getTime() : Infinity));
+  }, [state.matches, state.lineups, isStaff]);
+  const [matchId, setMatchId] = useState(null);
+  const cur = list.find((x) => x.m.id === matchId) || list[0];
+
+  if (!cur) {
+    return (
+      <div className="card">
+        <h2>Composition</h2>
+        <div className="hint">
+          {isStaff
+            ? "Aucun match à venir. Ajoute les prochains matchs dans l'onglet Matchs."
+            : "La composition du prochain match apparaîtra ici 2 jours avant la rencontre."}
+        </div>
+      </div>
+    );
   }
+
+  const { m, d } = cur;
+  const lineup = getLineup(state, m.id);
+  const has = lineup.batting.some(Boolean) || Object.keys(lineup.defense).length > 0;
+  const nameOf = (id) => {
+    const p = state.roster.find((r) => r.id === id);
+    return p ? `${p.prenom} ${p.nom}${p.numero ? " #" + p.numero : ""}` : "—";
+  };
+  const posOf = (id) => {
+    const k = Object.keys(lineup.defense).find((key) => lineup.defense[key] === id);
+    const fp = FIELD_POSITIONS.find((f) => f.key === k);
+    return id && lineup.dh === id ? "DH" : fp ? fp.short : "";
+  };
+  const visibleFrom = d ? new Date(d.getTime() - 2 * DAY_MS) : null;
+  const fmt = (x) => x.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
   return (
     <div>
       <div className="card">
-        <h2>Composition — choisir le match</h2>
-        <select className="match-select" value={matchId} onChange={(e) => setMatchId(e.target.value)}>
-          {state.matches.map((m) => (
-            <option key={m.id} value={m.id}>{m.label}{m.opponent ? ` vs ${m.opponent}` : ""} — {m.date}</option>
+        <h2>Composition</h2>
+        <select className="match-select" value={m.id} onChange={(e) => setMatchId(e.target.value)}>
+          {list.map(({ m: x, lu }) => (
+            <option key={x.id} value={x.id}>
+              {x.label}{x.opponent ? ` vs ${x.opponent}` : ""} — {x.date || "date à définir"}{isStaff && !(lu && (lu.batting || []).some(Boolean)) ? " (pas encore de compo)" : ""}
+            </option>
           ))}
         </select>
-        <div className="hint">
-          {eligible.length} joueur(s) disponible(s) (présents ou sous réserve) pour ce match.
-        </div>
+        {isStaff && (
+          <div className="hint">
+            {visibleFrom
+              ? (Date.now() >= visibleFrom.getTime()
+                  ? "Visible par les joueurs."
+                  : `Visible par les joueurs à partir du ${fmt(visibleFrom)}.`)
+              : "Date du match non reconnue : les joueurs ne verront pas cette compo. Utilise un format comme « 12 avril »."}
+            {" "}Pour la modifier : <a href="/compo/" style={{ color: "var(--gold)" }}>Compo &amp; changements</a>.
+          </div>
+        )}
       </div>
 
-      <div className="card">
-        <h2>Défense — placement sur le terrain</h2>
-        <div className="field-wrap">
-          <FieldDiagram defense={lineup.defense} roster={state.roster} />
-        </div>
-        <div className="hint" style={{ marginBottom: 10 }}>
-          Les joueurs déjà placés à un autre poste apparaissent en <span style={{ color: "var(--bad)" }}>rouge</span> dans
-          les listes ci-dessous (les choisir ailleurs les y déplace — jamais de doublon). Une
-          étoile ★ signale un poste souhaité par le joueur.
-        </div>
-        <div className="defense-list">
-          {FIELD_POSITIONS.map((fp) => (
-            <label className="field defense-row" key={fp.key}>
-              <span>{fp.key}</span>
-              <select
-                value={lineup.defense[fp.key] || ""}
-                onChange={(e) => handleDefenseChange(fp.key, e.target.value)}
-                disabled={busy}
-              >
-                <option value="">—</option>
-                {eligible.map((p) => {
-                  const alreadyPlaced = usedInDefense.has(p.id) && lineup.defense[fp.key] !== p.id;
-                  return (
-                    <option key={p.id} value={p.id} style={alreadyPlaced ? { color: "#e05a4e" } : undefined}>
-                      {alreadyPlaced ? "🔴 " : ""}{playerLabel(p)}{p.prefs.includes(fp.key) ? " ★" : ""}{alreadyPlaced ? " (déjà placé)" : ""}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Ordre au bâton</h2>
-        <div className="hint" style={{ marginBottom: 10 }}>
-          Même principe : les joueurs déjà positionnés dans l'ordre au bâton apparaissent en
-          rouge — les choisir ailleurs les y déplace, jamais de doublon.
-        </div>
-        <div className="batting-list">
-          {lineup.batting.map((playerId, idx) => (
-            <label className="field defense-row" key={idx}>
-              <span>{idx + 1}{idx === 0 ? "er" : "e"} au bâton</span>
-              <select
-                value={playerId || ""}
-                onChange={(e) => handleBattingChange(idx, e.target.value)}
-                disabled={busy}
-              >
-                <option value="">—</option>
-                {eligible.map((p) => {
-                  const alreadyPlaced = usedInBatting.has(p.id) && lineup.batting[idx] !== p.id;
-                  return (
-                    <option key={p.id} value={p.id} style={alreadyPlaced ? { color: "#e05a4e" } : undefined}>
-                      {alreadyPlaced ? "🔴 " : ""}{playerLabel(p)}{alreadyPlaced ? " — déjà placé" : ""}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-          ))}
-        </div>
-      </div>
+      {!has ? (
+        <div className="card"><div className="hint">Pas encore de composition pour ce match.</div></div>
+      ) : (
+        <>
+          <div className="card">
+            <h2>Défense</h2>
+            <div className="field-wrap">
+              <FieldDiagram defense={lineup.defense} roster={state.roster} />
+            </div>
+          </div>
+          <div className="card">
+            <h2>Ordre au bâton</h2>
+            <ol className="compo-order">
+              {lineup.batting.map((id, i) => (
+                <li key={i}>
+                  <span className="compo-n">{i + 1}</span>
+                  <span className="compo-name">{id ? nameOf(id) : "—"}</span>
+                  <span className="compo-pos">{posOf(id)}</span>
+                </li>
+              ))}
+            </ol>
+            {lineup.dh && lineup.defense["Lanceur"] && (
+              <div className="hint" style={{ marginTop: 8 }}>
+                {nameOf(lineup.dh)} est frappeur désigné (DH) pour {nameOf(lineup.defense["Lanceur"])}.
+              </div>
+            )}
+          </div>
+          {lineup.subs && lineup.subs.length > 0 && (
+            <div className="card">
+              <h2>Changements prévus</h2>
+              <ul className="compo-subs">
+                {lineup.subs.map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1823,16 +1989,52 @@ function LineupView({ state, actingUser, onSetDefense, onSetBatting, busy }) {
 /* and a souvenir photo per match                                     */
 /* ------------------------------------------------------------------ */
 
-function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReorderMatches, busy }) {
+function SeasonManager({ onAddSeason, onSetCurrentSeason, busy }) {
+  const ctx = useContext(SeasonContext);
+  const [draft, setDraft] = useState("");
+  const [msg, setMsg] = useState("");
+  const next = String((parseInt(ctx.seasons[0], 10) || new Date().getFullYear()) + 1);
+  async function create(makeCurrent) {
+    const v = (draft || next).trim();
+    if (!/^[0-9]{4}([-/][0-9]{2,4})?$/.test(v)) { setMsg("Saison invalide, par exemple " + next + "."); return; }
+    const ok = await onAddSeason(v, makeCurrent);
+    if (ok) { setDraft(""); setMsg(`Saison ${v} créée${makeCurrent ? " et passée en cours" : ""}.`); }
+  }
+  return (
+    <div className="card">
+      <h2>Saisons</h2>
+      <div className="hint" style={{ marginBottom: 10 }}>
+        La saison en cours est affichée par défaut dans tous les onglets (Matchs, Suivi, Présences,
+        Résultats, Classement). Les anciennes restent consultables avec le sélecteur de saison.
+      </div>
+      <div className="matches-toolbar" style={{ flexWrap: "wrap", alignItems: "center" }}>
+        <label className="field" style={{ margin: 0 }}>
+          <span>Saison en cours</span>
+          <select className="match-select" style={{ margin: 0 }} value={ctx.current} disabled={busy}
+            onChange={(e) => onSetCurrentSeason(e.target.value)}>
+            {ctx.seasons.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </label>
+        <label className="field" style={{ margin: 0 }}>
+          <span>Nouvelle saison</span>
+          <input value={draft} placeholder={next} onChange={(e) => { setDraft(e.target.value); setMsg(""); }} style={{ maxWidth: 120 }} />
+        </label>
+        <button className="btn-ghost small" disabled={busy} onClick={() => create(false)}>Créer</button>
+        <button className="btn-primary small" disabled={busy} onClick={() => create(true)}>Créer et passer dessus</button>
+      </div>
+      {msg && <div className="hint" style={{ marginTop: 8 }}>{msg}</div>}
+    </div>
+  );
+}
+
+function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReorderMatches, onAddSeason, onSetCurrentSeason, busy }) {
+  const seasonCtx = useContext(SeasonContext);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // matchId pending delete confirm
   const [seasonFilter, setSeasonFilter] = useState(null);
 
-  const seasons = useMemo(() => {
-    const set = new Set(matches.map((m) => m.season || "—"));
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [matches]);
+  const seasons = useSeasonList(matches);
 
-  const effectiveFilter = seasonFilter ?? (seasons[0] || "all");
+  const effectiveFilter = seasonFilter ?? (seasons.current || "all");
 
   const filteredMatches = useMemo(
     () => matches.filter((m) => effectiveFilter === "all" || (m.season || "—") === effectiveFilter),
@@ -1873,12 +2075,14 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
   }
 
   function handleAddMatch() {
-    onAddMatch();
-    if (effectiveFilter !== CURRENT_SEASON) setSeasonFilter(CURRENT_SEASON);
+    const target = effectiveFilter === "all" ? seasonCtx.current : effectiveFilter;
+    onAddMatch(target);
+    setSeasonFilter(target);
   }
 
   return (
     <div>
+      <SeasonManager onAddSeason={onAddSeason} onSetCurrentSeason={onSetCurrentSeason} busy={busy} />
       <div className="card">
         <h2>Matchs de la saison</h2>
         <div className="hint" style={{ marginBottom: 14 }}>
@@ -2001,12 +2205,13 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
                 </label>
                 <label className="field">
                   <span>Saison</span>
-                  <DebouncedInput
-                    value={m.season || ""}
-                    onCommit={(v) => onUpdateField(m.id, "season", v)}
+                  <select
+                    value={m.season || seasonCtx.current}
+                    onChange={(e) => onUpdateField(m.id, "season", e.target.value)}
                     disabled={busy}
-                    placeholder="ex: 2026"
-                  />
+                  >
+                    {seasons.filter((x) => x !== "—").map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
                 </label>
               </div>
               <label className="field">
@@ -2045,12 +2250,9 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
 /* ------------------------------------------------------------------ */
 
 function ResultsView({ matches, canEdit, onSetInning }) {
-  const seasons = useMemo(() => {
-    const set = new Set(matches.map((m) => m.season || "—"));
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [matches]);
+  const seasons = useSeasonList(matches);
   const [seasonFilter, setSeasonFilter] = useState(null);
-  const effectiveSeason = seasonFilter ?? (seasons[0] || "all");
+  const effectiveSeason = seasonFilter ?? (seasons.current || "all");
   const seasonMatches = useMemo(
     () => matches.filter((m) => effectiveSeason === "all" || (m.season || "—") === effectiveSeason),
     [matches, effectiveSeason]
@@ -2143,15 +2345,13 @@ function ResultsView({ matches, canEdit, onSetInning }) {
 /* ------------------------------------------------------------------ */
 
 function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteTeam, busy }) {
+  const seasonCtx = useContext(SeasonContext);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [seasonFilter, setSeasonFilter] = useState(null);
 
-  const seasons = useMemo(() => {
-    const set = new Set((standings || []).map((t) => t.season || "—"));
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [standings]);
+  const seasons = useSeasonList(standings);
 
-  const effectiveFilter = seasonFilter ?? (seasons[0] || "all");
+  const effectiveFilter = seasonFilter ?? (seasons.current || "all");
 
   const filteredStandings = useMemo(
     () => (standings || []).filter((t) => effectiveFilter === "all" || (t.season || "—") === effectiveFilter),
@@ -2176,8 +2376,9 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
   }, [filteredStandings]);
 
   function handleAddTeam() {
-    onAddTeam();
-    if (effectiveFilter !== CURRENT_SEASON) setSeasonFilter(CURRENT_SEASON);
+    const target = effectiveFilter === "all" ? seasonCtx.current : effectiveFilter;
+    onAddTeam(target);
+    setSeasonFilter(target);
   }
 
   return (
@@ -2187,9 +2388,8 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
       {canEdit && (
         <div className="hint" style={{ marginBottom: 14 }}>
           Recopie les chiffres depuis la page de classement officielle de la ligue. Le PCT et
-          le nombre de matchs d'écart (GB) se calculent automatiquement. Pour créer une nouvelle
-          saison : ajoute une équipe, puis change le petit champ "Saison" sous son nom (ex:
-          2027) — elle apparaîtra alors dans le sélecteur ci-dessous.
+          le nombre de matchs d'écart (GB) se calculent automatiquement. Les nouvelles saisons se
+          créent dans l'onglet Matchs ; une équipe ajoutée va dans la saison sélectionnée ci-dessous.
         </div>
       )}
 
@@ -2227,13 +2427,14 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
                     onCommit={(v) => onUpdateField(team.id, "team", v)}
                     disabled={busy}
                   />
-                  <DebouncedInput
+                  <select
                     className="standings-season-input"
-                    value={team.season || ""}
-                    onCommit={(v) => { onUpdateField(team.id, "season", v); setSeasonFilter(v); }}
+                    value={team.season || seasonCtx.current}
+                    onChange={(e) => { onUpdateField(team.id, "season", e.target.value); setSeasonFilter(e.target.value); }}
                     disabled={busy}
-                    placeholder="Saison ex: 2027"
-                  />
+                  >
+                    {seasons.filter((x) => x !== "—").map((x) => <option key={x} value={x}>Saison {x}</option>)}
+                  </select>
                 </>
               ) : (
                 <span className="standings-team-name">{team.team}</span>
@@ -2304,10 +2505,7 @@ function StandingsView({ standings, canEdit, onUpdateField, onAddTeam, onDeleteT
 /* ------------------------------------------------------------------ */
 
 function HistoryView({ matches, lineups, roster }) {
-  const seasons = useMemo(() => {
-    const set = new Set(matches.map((m) => m.season || "—"));
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [matches]);
+  const seasons = useSeasonList(matches);
 
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [expandedId, setExpandedId] = useState(null);
@@ -2459,12 +2657,9 @@ function HistoryView({ matches, lineups, roster }) {
 /* ------------------------------------------------------------------ */
 
 function PresenceRosterView({ state }) {
-  const seasons = useMemo(() => {
-    const set = new Set(state.matches.map((m) => m.season || "—"));
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [state.matches]);
+  const seasons = useSeasonList(state.matches);
   const [seasonFilter, setSeasonFilter] = useState(null);
-  const effectiveSeason = seasonFilter ?? (seasons[0] || "all");
+  const effectiveSeason = seasonFilter ?? (seasons.current || "all");
   const seasonMatches = useMemo(
     () => state.matches.filter((m) => effectiveSeason === "all" || (m.season || "—") === effectiveSeason),
     [state.matches, effectiveSeason]
@@ -3292,6 +3487,12 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0f2818; }
 }
 .hist-row-title { font-size: 13px; color: var(--cream); }
 .hist-row-season { color: var(--muted); font-size: 12px; }
+.compo-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.compo-order li { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(212,175,55,0.15); }
+.compo-n { color: var(--gold); font-weight: 700; text-align: center; }
+.compo-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compo-pos { color: var(--gold); font-size: 13px; font-weight: 600; }
+.compo-subs { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .hist-row-date { font-size: 11px; color: var(--muted); font-family: 'Roboto Mono', monospace; }
 .hist-row-right { display: flex; align-items: center; gap: 8px; }
 .hist-row-score { font-family: 'Roboto Mono', monospace; color: var(--gold); font-weight: 700; }

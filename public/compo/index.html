@@ -50,6 +50,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--sel);outline-of
 .chip{--st:var(--st-bench);border-color:color-mix(in srgb,var(--st) 55%,var(--line));background:color-mix(in srgb,var(--st) 12%,var(--chip))}
 .chip.st-start{--st:var(--st-start)} .chip.st-out{--st:var(--st-out)} .chip.st-in{--st:var(--st-in)}
 .chip.st-bench{background:var(--chip);border-style:dashed;color:var(--muted)}
+.chip.pr-absent{opacity:.45;text-decoration:line-through}
+.pq{font-family:var(--cond);font-size:11px;font-weight:700;padding:2px 5px;border-radius:4px;line-height:1}
+.pq.ok{background:var(--st-start);color:#fff}.pq.res{background:var(--st-out);color:#fff}.pq.abs{background:var(--st-bench);color:#fff}.pq.no{background:var(--line);color:var(--ink)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
@@ -148,7 +151,7 @@ textarea.copy{position:fixed;opacity:0;pointer-events:none}
     <label for="calMatch" class="lbl">Envoyer vers l'appli</label>
     <select id="calMatch" style="font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);max-width:380px;flex:1 1 240px;min-width:0"></select>
     <button id="sendBtn" type="button">Envoyer la compo</button>
-    <span class="tabnote" id="sendNote">Remplit l'onglet Composition du match choisi (terrain + ordre). La feuille de match la reprendra.</span>
+    <span class="tabnote" id="sendNote">Publie terrain, ordre et changements prévus dans l'onglet Composition (visible par les joueurs 2 jours avant le match). La feuille de match la reprend.</span>
   </div>
 
   <section class="panel">
@@ -336,12 +339,15 @@ function render(){
   const status = n => { const st = !!(posOf(n) || batOf(n)); return st ? (inAfter(n) ? 'start' : 'out') : (inAfter(n) ? 'in' : 'bench'); };
   const ST = {start:['Titulaire',0], out:['Titulaire qui sort',1], in:['Entre en jeu',2], bench:['Ne joue pas',3]};
   const counts = {start:0,out:0,in:0,bench:0}; S.players.forEach(n => counts[status(n)]++);
-  $('legend').innerHTML = Object.keys(ST).map(k => `<span><i style="background:var(--st-${k})"></i>${ST[k][0]} <b>${counts[k]}</b></span>`).join('');
-  const sorted = [...S.players].sort((a,b) => ST[status(a)][1] - ST[status(b)][1]);
+  $('legend').innerHTML = Object.keys(ST).map(k => `<span><i style="background:var(--st-${k})"></i>${ST[k][0]} <b>${counts[k]}</b></span>`).join('')
+    + ($('calMatch').value ? `<span style="flex-basis:100%">Présences du match choisi : <span class="pq ok">✓</span> présent · <span class="pq res">rés.</span> sous réserve · <span class="pq no">?</span> sans réponse · <span class="pq abs">abs.</span> absent</span>` : '');
+  const PR = {present:0, reserve:1, '':2, absent:3};
+  const sorted = [...S.players].sort((a,b) => (ST[status(a)][1] - ST[status(b)][1]) || (PR[presOf(a)] - PR[presOf(b)]) || a.localeCompare(b,'fr'));
   $('roster').innerHTML = sorted.map(n => {
     const p = posOf(n), b = batOf(n), stt = status(n);
     const sel = same(selected,{type:'roster',id:n}) ? ' selected' : '';
-    return `<span class="chip st-${stt}${sel}" title="${ST[stt][0]}" data-src="roster:${esc(n)}">${esc(n)}<span class="tags">${p?`<span class="tag">${p}</span>`:''}${b?`<span class="tag bat">${b}</span>`:''}</span></span>`;
+    const pr = presOf(n), prTag = !$('calMatch').value || !CLUB.byName[n] ? '' : pr==='present' ? '<span class="pq ok">✓</span>' : pr==='reserve' ? '<span class="pq res">rés.</span>' : pr==='absent' ? '<span class="pq abs">abs.</span>' : '<span class="pq no">?</span>';
+    return `<span class="chip st-${stt}${sel}${pr==='absent'?' pr-absent':''}" title="${ST[stt][0]}${pr?' · '+({present:'présent',reserve:'sous réserve',absent:'absent'})[pr]:''}" data-src="roster:${esc(n)}">${prTag}${esc(n)}<span class="tags">${p?`<span class="tag">${p}</span>`:''}${b?`<span class="tag bat">${b}</span>`:''}</span></span>`;
   }).join('');
   // field
   const t = $('dhToggle'); t.textContent = S.dh ? 'Retirer le DH' : 'Ajouter un DH'; t.setAttribute('aria-pressed', S.dh ? 'true' : 'false'); t.classList.toggle('primary', !!S.dh);
@@ -682,6 +688,7 @@ async function api(payload){
   if(!r.ok) throw new Error(d.error || 'Erreur réseau');
   return d;
 }
+function presOf(n){ const id = CLUB.byName[n], m = $('calMatch') && $('calMatch').value; return (id && m && ((CLUB.presence||{})[id]||{})[m]) || ''; }
 function clubNames(roster){
   const cnt = {}; roster.forEach(p => { const k=(p.prenom||'').trim(); if(k) cnt[k]=(cnt[k]||0)+1; });
   const byName = {};
@@ -694,7 +701,7 @@ function fillCal(){
   sel.innerHTML = '<option value="">— Choisir un match du calendrier —</option>' + CLUB.matches.map(m =>
     `<option value="${esc(m.id)}"${m.id===prev?' selected':''}>${esc(m.label)}${m.date?' · '+esc(m.date):''}${m.opponent?' · '+esc(m.opponent):''}</option>`).join('');
 }
-$('calMatch').addEventListener('change', e => { S.calId = e.target.value; save(); });
+$('calMatch').addEventListener('change', e => { S.calId = e.target.value; save(); render(); });
 $('sendBtn').onclick = async () => {
   const matchId = $('calMatch').value;
   if(!matchId){ toast('Choisis d\'abord un match du calendrier'); return; }
@@ -702,9 +709,13 @@ $('sendBtn').onclick = async () => {
   const unknown = [...Object.values(S.field), ...S.order].filter(n => n && !CLUB.byName[n]);
   const btn = $('sendBtn'); btn.disabled = true; btn.textContent = 'Envoi…';
   try{
-    for(const [k, poste] of Object.entries(APP_POS)) await api({action:'setDefenseSlot', matchId, posteKey:poste, playerId: CLUB.byName[S.field[k]] || null});
-    for(let i=0;i<9;i++) await api({action:'setBattingSlot', matchId, index:i, playerId: CLUB.byName[S.order[i]] || ''});
-    toast(unknown.length ? `Compo envoyée (sans ${unknown.join(', ')} : pas dans l'effectif du club)` : 'Compo envoyée dans l\'appli');
+    const defense = {};
+    for(const [k, poste] of Object.entries(APP_POS)){ const id = CLUB.byName[S.field[k]]; if(id) defense[poste] = id; }
+    const batting = S.order.slice(0,9).map(n => CLUB.byName[n] || '');
+    const dh = S.dh && S.field.DH ? (CLUB.byName[S.field.DH] || null) : null;
+    const subs = filledSubs().map(subText);
+    await api({action:'setLineup', matchId, defense, batting, dh, subs});
+    toast(unknown.length ? `Compo publiée (sans ${unknown.join(', ')} : pas dans l'effectif du club)` : 'Compo publiée dans l\'onglet Composition');
   }catch(e){ toast(e.message || 'Envoi impossible'); }
   btn.disabled = false; btn.textContent = 'Envoyer la compo';
 };
@@ -716,7 +727,9 @@ async function boot(){
     if(!r.session || !['coach','owner'].includes(r.session.role)){ gate(); return; }
     $('who').textContent = r.session.username;
     CLUB.byName = S.clubMap = clubNames(r.state.roster || []);
-    CLUB.matches = (r.state.matches || []).filter(m => !m.cancelled);
+    CLUB.presence = r.state.presence || {};
+    const cs = r.state.currentSeason;
+    CLUB.matches = (r.state.matches || []).filter(m => !m.cancelled && (!cs || (m.season||cs) === cs));
     S.club = Object.keys(CLUB.byName).sort((a,b) => a.localeCompare(b,'fr'));
     S.calMatches = CLUB.matches.map(m => ({id:m.id, label:m.label, date:m.date, opponent:m.opponent}));
   }catch(e){

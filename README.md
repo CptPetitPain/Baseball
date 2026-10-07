@@ -115,6 +115,32 @@ Page publique, sans connexion, à partager aux familles : `https://ton-site.netl
 - Fonction `netlify/functions/live.js` (route `/api/live`) : réponse mise en cache 15 s par le
   CDN Netlify, donc environ 4 exécutions par minute quel que soit le nombre de spectateurs.
 
+## Composition, saisons, sécurité, sauvegardes
+
+- **Composition** (tous) : lecture seule. Publiée depuis Compo & changements ; visible par les
+  joueurs à partir de 2 jours avant le match (vérifié côté serveur), disparaît 3 jours après
+  (reste dans Historique). Une date de match non reconnue = jamais visible par les joueurs.
+- **Saisons** : onglet Matchs → bloc Saisons (créer 2027, choisir la saison en cours). La saison
+  en cours est le filtre par défaut partout.
+- **Visiteur non connecté** : ne reçoit plus que les noms pour créer son compte. Les joueurs ne
+  voient plus le journal des modifications ni les comptes.
+- **Connexion** : 5 échecs par identifiant (ou 20 par IP) = blocage 15 min ; idem pour les codes
+  staff/propriétaire. Mots de passe en scrypt salé (les anciens sont convertis à la connexion),
+  6 caractères minimum pour les nouveaux.
+- **Sauvegardes** (propriétaire, onglet Suivi) : copie automatique quotidienne sur 30 jours,
+  téléchargement complet, restauration avec confirmation.
+
+## Petits plus (lot d'octobre)
+
+- **Relance WhatsApp** (staff, onglet Présences) : message prêt à copier avec les joueurs sans
+  réponse (option : ajouter les « sous réserve »).
+- **Compo & changements** : quand un match est choisi, l'effectif affiche les présences
+  (✓ / rés. / ? / abs.) et trie les présents en premier.
+- **Image du score** (feuille de match → Récap, et page /live en fin de match) : générée dans le
+  navigateur. Un match terminé reste 30 min sur /live puis disparaît.
+- **QR code** de la page live sur la feuille de match (bibliothèque locale
+  `public/match/qrcode.js`, licence MIT, marche sans réseau).
+
 ## Ce qui a changé par rapport à la version "artifact" Claude
 
 Cette version a une vraie séparation client / serveur :

@@ -120,8 +120,12 @@ function defaultState() {
     matches: MATCHES_SEED,
     standings: [],
     auditLog: [],
+    seasons: [CURRENT_SEASON],
+    currentSeason: CURRENT_SEASON,
   };
 }
+
+const SEASON_RE = /^[0-9]{4}([-/][0-9]{2,4})?$/;
 
 function normalizeState(s) {
   const base = defaultState();
@@ -141,13 +145,51 @@ function normalizeState(s) {
     matches,
     standings: (s.standings || []).map((t) => ({ ...t, season: t.season || CURRENT_SEASON })),
     auditLog: s.auditLog || [],
+    ...seasonsOf(s, matches),
   };
+}
+
+function seasonsOf(s, matches) {
+  const set = new Set([...(Array.isArray(s.seasons) ? s.seasons : []), CURRENT_SEASON]);
+  matches.forEach((m) => m.season && set.add(String(m.season)));
+  (s.standings || []).forEach((t) => t.season && set.add(String(t.season)));
+  const seasons = Array.from(set).filter(Boolean).sort((a, b) => b.localeCompare(a));
+  const currentSeason = s.currentSeason && seasons.includes(s.currentSeason) ? s.currentSeason : CURRENT_SEASON;
+  return { seasons, currentSeason };
 }
 
 function getLineup(state, matchId) {
   const l = state.lineups[matchId] || { defense: {}, batting: [] };
-  const batting = Array.from({ length: 9 }, (_, i) => l.batting[i] || "");
-  return { defense: l.defense || {}, batting };
+  const batting = Array.from({ length: 9 }, (_, i) => (l.batting || [])[i] || "");
+  return { ...l, defense: l.defense || {}, batting };
+}
+
+/* Date d'un match ("12 avril", "12/04", "2027-04-12"). L'année vient de la saison. */
+const FR_MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+function matchDate(m) {
+  const str = String(m.date || "").toLowerCase().trim();
+  if (!str) return null;
+  const year = parseInt(String(m.season || CURRENT_SEASON).slice(0, 4), 10) || new Date().getFullYear();
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return new Date(Date.UTC(+iso[1], +iso[2] - 1, +iso[3]));
+  const num = str.match(/(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?/);
+  if (num) {
+    let y = num[3] ? +num[3] : year;
+    if (y < 100) y += 2000;
+    return new Date(Date.UTC(y, +num[2] - 1, +num[1]));
+  }
+  const fr = str.match(/(\d{1,2})\s*(?:er)?\s+([a-zéèêûôîà]+)/);
+  if (!fr) return null;
+  const mi = FR_MONTHS.findIndex((x) => x === fr[2] || x.startsWith(fr[2]) || fr[2].startsWith(x.slice(0, 4)));
+  if (mi === -1) return null;
+  return new Date(Date.UTC(year, mi, +fr[1]));
+}
+
+/* Les joueurs voient la composition à partir de 2 jours avant le match. */
+const LINEUP_LEAD_MS = 2 * 24 * 60 * 60 * 1000;
+function lineupVisibleToPlayers(m) {
+  const d = matchDate(m);
+  return Boolean(d) && Date.now() >= d.getTime() - LINEUP_LEAD_MS;
 }
 
 /* ------------------------------------------------------------------ */
@@ -171,8 +213,66 @@ async function loadAppState(store) {
   return initial;
 }
 
+/* Sauvegarde automatique : une copie par jour (à la première modification
+   de la journée), les 30 derniers jours sont conservés. */
+const BACKUP_PREFIX = "backup/";
+const BACKUP_INDEX = "dragons-backup-index-v1";
 async function saveAppState(store, state) {
   await store.set(APP_KEY, JSON.stringify(state));
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    if ((await store.get(BACKUP_INDEX)) !== day) {
+      await store.set(BACKUP_PREFIX + day, JSON.stringify(state));
+      await store.set(BACKUP_INDEX, day);
+      const { blobs } = await store.list({ prefix: BACKUP_PREFIX });
+      const days = blobs.map((b) => b.key).filter((k) => /^backup\/\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+      for (const k of days.slice(0, Math.max(0, days.length - 30))) await store.delete(k);
+    }
+  } catch (e) { /* la sauvegarde ne doit jamais bloquer l'appli */ }
+}
+
+async function handleBackup(store, state, session, action, body) {
+  if (session.role !== "owner") return fail(403, "Réservé au compte propriétaire.");
+  if (action === "listBackups") {
+    const { blobs } = await store.list({ prefix: BACKUP_PREFIX });
+    return ok({ backups: blobs.map((b) => b.key.slice(BACKUP_PREFIX.length)).sort().reverse() });
+  }
+  if (action === "getBackup") {
+    let data = state;
+    if (body.day) {
+      if (!/^[0-9a-z-]{10,40}$/.test(body.day)) return fail(400, "Sauvegarde introuvable.");
+      const raw = await store.get(BACKUP_PREFIX + body.day);
+      if (!raw) return fail(404, "Sauvegarde introuvable.");
+      data = JSON.parse(raw);
+    }
+    const sheets = [];
+    if (!body.day) {
+      const { blobs } = await store.list({ prefix: "scoresheet/" });
+      for (const b of blobs) { const r = await store.get(b.key); if (r) sheets.push(JSON.parse(r)); }
+    }
+    return ok({ backup: { kind: "dragons-backup", version: 1, exportedAt: new Date().toISOString(), state: data, scoresheets: sheets } });
+  }
+  if (action === "restoreBackup") {
+    const b = body.backup;
+    const st = b && b.kind === "dragons-backup" ? b.state : null;
+    if (!st || !Array.isArray(st.roster) || !Array.isArray(st.matches) || typeof st.accounts !== "object") {
+      return fail(400, "Fichier de sauvegarde non reconnu.");
+    }
+    if (!Object.values(st.accounts).some((a) => a.role === "owner")) {
+      return fail(400, "Cette sauvegarde ne contient aucun compte propriétaire : restauration refusée.");
+    }
+    await store.set(BACKUP_PREFIX + "avant-restauration-" + Date.now(), JSON.stringify(state));
+    let next = normalizeState(st);
+    next = logAction(next, session.username, "a restauré une sauvegarde");
+    await store.set(APP_KEY, JSON.stringify(next));
+    let n = 0;
+    for (const sh of Array.isArray(b.scoresheets) ? b.scoresheets : []) {
+      const c = cleanSheet(sh);
+      if (c) { await store.set("scoresheet/" + c.id, JSON.stringify(c)); n++; }
+    }
+    return ok({ restored: true, scoresheets: n, state: sanitize(next, session) });
+  }
+  return fail(400, "Action inconnue.");
 }
 
 async function loadSessions(store) {
@@ -188,6 +288,60 @@ function sha256(text) {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
+/* Mots de passe : scrypt + sel. Les anciens hash SHA-256 sont encore acceptés
+   et remplacés automatiquement à la prochaine connexion réussie. */
+const MIN_PASSWORD = 6;
+function hashPassword(pw) {
+  const salt = crypto.randomBytes(16);
+  const h = crypto.scryptSync(pw, salt, 32);
+  return `scrypt$${salt.toString("hex")}$${h.toString("hex")}`;
+}
+function verifyPassword(pw, stored) {
+  if (!stored) return false;
+  if (stored.startsWith("scrypt$")) {
+    const [, salt, h] = stored.split("$");
+    const expected = Buffer.from(h, "hex");
+    const got = crypto.scryptSync(pw, Buffer.from(salt, "hex"), expected.length);
+    return got.length === expected.length && crypto.timingSafeEqual(got, expected);
+  }
+  const a = Buffer.from(sha256(pw)), b = Buffer.from(stored);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/* Anti force brute : 5 échecs par identifiant (ou 20 par adresse IP) en
+   15 min bloquent 15 min. Même chose pour les codes staff/propriétaire. */
+const GUARD_KEY = "dragons-login-guard-v1";
+const GUARD_WINDOW_MS = 15 * 60 * 1000;
+async function guardLockedFor(store, keys) {
+  const g = JSON.parse((await store.get(GUARD_KEY)) || "{}");
+  const now = Date.now();
+  for (const k of keys) {
+    const e = g[k];
+    if (e && e.until && e.until > now) return Math.ceil((e.until - now) / 60000);
+  }
+  return 0;
+}
+async function guardFail(store, keys) {
+  const g = JSON.parse((await store.get(GUARD_KEY)) || "{}");
+  const now = Date.now();
+  Object.keys(g).forEach((k) => { if (g[k].reset < now && !(g[k].until > now)) delete g[k]; });
+  keys.forEach((k) => {
+    const e = g[k] && g[k].reset > now ? g[k] : { n: 0, reset: now + GUARD_WINDOW_MS };
+    e.n += 1;
+    if (e.n >= (k.startsWith("ip:") ? 20 : 5)) e.until = now + GUARD_WINDOW_MS;
+    g[k] = e;
+  });
+  await store.set(GUARD_KEY, JSON.stringify(g));
+}
+async function guardClear(store, key) {
+  const g = JSON.parse((await store.get(GUARD_KEY)) || "{}");
+  if (g[key]) { delete g[key]; await store.set(GUARD_KEY, JSON.stringify(g)); }
+}
+function clientIp(event) {
+  const h = (event && event.headers) || {};
+  return h["x-nf-client-connection-ip"] || String(h["x-forwarded-for"] || "").split(",")[0].trim() || "inconnue";
+}
+
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
 }
@@ -200,6 +354,7 @@ function randomToken() {
    to anyone poking at network requests. */
 function sanitize(state, session) {
   const isStaff = session && STAFF_ROLES.includes(session.role);
+  const claimedPlayerIds = Object.values(state.accounts).map((acc) => acc.playerId);
   if (isStaff) {
     const accounts = {};
     Object.entries(state.accounts).forEach(([uname, acc]) => {
@@ -207,9 +362,22 @@ function sanitize(state, session) {
     });
     return { ...state, accounts };
   }
-  const claimedPlayerIds = Object.values(state.accounts).map((acc) => acc.playerId);
-  const { accounts, ...rest } = state;
-  return { ...rest, claimedPlayerIds };
+  if (!session) {
+    // Visiteur non connecté : juste ce qu'il faut pour se connecter / créer son compte.
+    return {
+      roster: state.roster.map((p) => ({ id: p.id, nom: p.nom, prenom: p.prenom })),
+      claimedPlayerIds,
+      matches: [], standings: [], presence: {}, positions: {}, lineups: {}, auditLog: [],
+      seasons: state.seasons, currentSeason: state.currentSeason,
+    };
+  }
+  // Joueur connecté : pas de comptes, pas de journal, compositions seulement à J-2.
+  const lineups = {};
+  state.matches.forEach((m) => {
+    if (state.lineups[m.id] && lineupVisibleToPlayers(m)) lineups[m.id] = state.lineups[m.id];
+  });
+  const { accounts, auditLog, ...rest } = state;
+  return { ...rest, lineups, auditLog: [], claimedPlayerIds };
 }
 
 function nowLabel() {
@@ -310,17 +478,21 @@ function slugUsername(prenom, nom) {
   return base || "joueur";
 }
 
-async function doSignup(store, body) {
+async function doSignup(store, body, ip) {
   const password = body.password || "";
   if (!password) return fail(400, "Le mot de passe est obligatoire.");
-  if (password.length < 4) return fail(400, "Le mot de passe doit faire au moins 4 caractères.");
+  if (password.length < MIN_PASSWORD) return fail(400, `Le mot de passe doit faire au moins ${MIN_PASSWORD} caractères.`);
 
   let role = "player";
+  if (body.isOwner || body.isStaff) {
+    const wait = await guardLockedFor(store, ["code:" + ip]);
+    if (wait) return fail(429, `Trop d'essais de code. Réessaie dans ${wait} min.`);
+  }
   if (body.isOwner) {
-    if (!OWNER_CODE || body.ownerCode !== OWNER_CODE) return fail(403, "Code incorrect.");
+    if (!OWNER_CODE || body.ownerCode !== OWNER_CODE) { await guardFail(store, ["code:" + ip]); return fail(403, "Code incorrect."); }
     role = "owner";
   } else if (body.isStaff) {
-    if (!STAFF_CODE || body.staffCode !== STAFF_CODE) return fail(403, "Code staff incorrect.");
+    if (!STAFF_CODE || body.staffCode !== STAFF_CODE) { await guardFail(store, ["code:" + ip]); return fail(403, "Code staff incorrect."); }
     role = "coach";
   }
 
@@ -363,7 +535,7 @@ async function doSignup(store, body) {
     suffix++;
   }
 
-  const hash = sha256(password);
+  const hash = hashPassword(password);
   let next = {
     ...state,
     roster,
@@ -378,13 +550,24 @@ async function doSignup(store, body) {
   return ok({ token, username: uname, role, playerId: finalPlayerId, state: sanitize(next, { role }) });
 }
 
-async function doLogin(store, body) {
+async function doLogin(store, body, ip) {
   const uname = (body.username || "").trim().toLowerCase();
   const password = body.password || "";
+  const keys = ["u:" + uname, "ip:" + ip];
+  const wait = await guardLockedFor(store, keys);
+  if (wait) return fail(429, `Trop de tentatives. Réessaie dans ${wait} min.`);
   const state = await loadAppState(store);
   const acc = state.accounts[uname];
-  if (!acc) return fail(401, "Identifiant inconnu.");
-  if (sha256(password) !== acc.passwordHash) return fail(401, "Mot de passe incorrect.");
+  if (!acc || !verifyPassword(password, acc.passwordHash)) {
+    await guardFail(store, keys);
+    return fail(401, "Identifiant ou mot de passe incorrect.");
+  }
+  await guardClear(store, "u:" + uname);
+  if (!acc.passwordHash.startsWith("scrypt$")) {
+    // Mise à niveau silencieuse de l'ancien hash
+    state.accounts[uname] = { ...acc, passwordHash: hashPassword(password) };
+    await saveAppState(store, state);
+  }
   const token = await createSession(store, uname, acc.role, acc.playerId);
   return ok({ token, username: uname, role: acc.role, playerId: acc.playerId, state: sanitize(state, { role: acc.role }) });
 }
@@ -476,8 +659,9 @@ async function applyMutation(store, state, session, action, body) {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { matchId, field, value } = body;
       if (!["label", "date", "opponent", "location", "season", "cancelled"].includes(field)) return { error: "Champ invalide." };
+      if (field === "season" && !SEASON_RE.test(String(value || ""))) return { error: "Saison invalide (ex : 2027)." };
       const matches = s.matches.map((m) => (m.id === matchId ? { ...m, [field]: value } : m));
-      s = { ...s, matches };
+      s = { ...s, matches, ...(field === "season" && !s.seasons.includes(value) ? { seasons: [...s.seasons, value].sort((a, b) => b.localeCompare(a)) } : {}) };
       const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
       const fieldLabels = { label: "le nom", date: "la date", opponent: "l'équipe adverse", location: "domicile/extérieur", season: "la saison", cancelled: "le statut annulé" };
       s = logAction(s, actingUser, `a modifié ${fieldLabels[field] || field} de ${matchLabel}`);
@@ -486,7 +670,8 @@ async function applyMutation(store, state, session, action, body) {
     case "addMatch": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const id = "m-" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
-      const newMatch = { id, label: `Match ${s.matches.length + 1}`, date: "", opponent: "", location: "exterieur", season: CURRENT_SEASON, innings: emptyInnings() };
+      const season = body.season && s.seasons.includes(body.season) ? body.season : s.currentSeason;
+      const newMatch = { id, label: `Match ${s.matches.filter((m) => m.season === season).length + 1}`, date: "", opponent: "", location: "exterieur", season, innings: emptyInnings() };
       s = { ...s, matches: [...s.matches, newMatch] };
       s = logAction(s, actingUser, `a ajouté "${newMatch.label}"`);
       break;
@@ -544,6 +729,50 @@ async function applyMutation(store, state, session, action, body) {
       break;
     }
 
+    case "addSeason": {
+      if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
+      const season = String(body.season || "").trim();
+      if (!SEASON_RE.test(season)) return { error: "Saison invalide (ex : 2027)." };
+      if (!s.seasons.includes(season)) s = { ...s, seasons: [...s.seasons, season].sort((a, b) => b.localeCompare(a)) };
+      if (body.makeCurrent) s = { ...s, currentSeason: season };
+      s = logAction(s, actingUser, `a créé la saison ${season}${body.makeCurrent ? " (saison en cours)" : ""}`);
+      break;
+    }
+    case "setCurrentSeason": {
+      if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
+      if (!s.seasons.includes(body.season)) return { error: "Saison inconnue." };
+      s = { ...s, currentSeason: body.season };
+      s = logAction(s, actingUser, `a passé la saison en cours à ${body.season}`);
+      break;
+    }
+    case "setLineup": {
+      // Composition complète envoyée depuis la page Compo & changements.
+      if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
+      const { matchId, defense, batting, dh, subs } = body;
+      const match = s.matches.find((m) => m.id === matchId);
+      if (!match) return { error: "Match introuvable." };
+      const ids = new Set(s.roster.map((p) => p.id));
+      const def = {};
+      for (const pos of FIELD_POSITIONS) {
+        const v = defense && defense[pos];
+        if (v && ids.has(v)) def[pos] = v;
+      }
+      const bat = Array.from({ length: 9 }, (_, i) => {
+        const v = Array.isArray(batting) ? batting[i] : "";
+        return v && ids.has(v) ? v : "";
+      });
+      const lineup = {
+        defense: def,
+        batting: bat,
+        dh: dh && ids.has(dh) ? dh : null,
+        subs: Array.isArray(subs) ? subs.slice(0, 20).map((x) => String(x).slice(0, 140)).filter(Boolean) : [],
+        publishedAt: Date.now(),
+        publishedBy: actingUser,
+      };
+      s = { ...s, lineups: { ...s.lineups, [matchId]: lineup } };
+      s = logAction(s, actingUser, `a publié la composition de ${match.label}`);
+      break;
+    }
     case "setInnings": {
       // Score complet envoyé depuis la feuille de match (/match/).
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
@@ -562,7 +791,8 @@ async function applyMutation(store, state, session, action, body) {
     case "addTeam": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const id = "t-" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
-      const newTeam = { id, team: "Nouvelle équipe", w: 0, l: 0, t: 0, season: CURRENT_SEASON };
+      const season = body.season && s.seasons.includes(body.season) ? body.season : s.currentSeason;
+      const newTeam = { id, team: "Nouvelle équipe", w: 0, l: 0, t: 0, season };
       s = { ...s, standings: [...(s.standings || []), newTeam] };
       s = logAction(s, actingUser, "a ajouté une équipe au classement");
       break;
@@ -588,13 +818,13 @@ async function applyMutation(store, state, session, action, body) {
 
     case "resetPassword": {
       const { username, newPassword } = body;
-      if (!newPassword || newPassword.length < 4) return { error: "Le nouveau mot de passe doit faire au moins 4 caractères." };
+      if (!newPassword || newPassword.length < MIN_PASSWORD) return { error: `Le nouveau mot de passe doit faire au moins ${MIN_PASSWORD} caractères.` };
       if (!s.accounts[username]) return { error: "Compte introuvable." };
       if (isStaffRole(s.accounts[username].role) && role !== "owner" && username !== actingUser) {
         return { error: "Seul le compte propriétaire peut réinitialiser le mot de passe d'un membre du staff." };
       }
       if (!isStaffRole(role) && username !== actingUser) return { error: "Action non autorisée." };
-      s = { ...s, accounts: { ...s.accounts, [username]: { ...s.accounts[username], passwordHash: sha256(newPassword) } } };
+      s = { ...s, accounts: { ...s.accounts, [username]: { ...s.accounts[username], passwordHash: hashPassword(newPassword) } } };
       s = logAction(s, actingUser, `a réinitialisé le mot de passe de "${username}"`);
       await invalidateSessionsForUser(store, username);
       // Changing your OWN password would otherwise kill your own current
@@ -809,8 +1039,9 @@ export async function handler(event) {
   const store = getBlobStore();
 
   try {
-    if (action === "signup") return await doSignup(store, body);
-    if (action === "login") return await doLogin(store, body);
+    const ip = clientIp(event);
+    if (action === "signup") return await doSignup(store, body, ip);
+    if (action === "login") return await doLogin(store, body, ip);
 
     if (action === "logout") {
       if (token) await destroySession(store, token);
@@ -827,6 +1058,9 @@ export async function handler(event) {
     const session = await requireSession(store, token, state);
     if (!session) return fail(401, "Session invalide, reconnecte-toi.");
 
+    if (["listBackups", "getBackup", "restoreBackup"].includes(action)) {
+      return await handleBackup(store, state, session, action, body);
+    }
     if (["getScoresheets", "saveScoresheet", "deleteScoresheet"].includes(action)) {
       return await handleScoresheet(store, state, session, action, body);
     }

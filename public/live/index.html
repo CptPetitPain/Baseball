@@ -91,6 +91,7 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 <body>
 <div class="wrap" id="app"><div class="empty">Chargement…</div></div>
 <div id="layer"></div>
+<script src="/match/scorecard.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -108,7 +109,8 @@ async function fetchLive(){
   render();
   const g=games.find(x=>x.id===cur);
   if(g)queueNew(g);
-  schedule(g&&g.over?60000:POLL*(fails>3?2:1));
+  if(g&&g.over)return; // match terminé : plus aucun appel
+  schedule(POLL*(fails>3?2:1));
 }
 function schedule(ms){clearTimeout(timer);timer=setTimeout(()=>{if(document.visibilityState==='visible')fetchLive();else schedule(ms)},ms)}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-lastFetch>POLL)fetchLive()});
@@ -133,7 +135,7 @@ function render(){
   const tabs=games.length>1?`<div class="tabs">${games.map(x=>`<button class="${x.id===cur?'on':''}" data-g="${esc(x.id)}">Dragons – ${esc(x.opp)}</button>`).join('')}</div>`:'';
   let mid='';
   if(g.over){
-    mid=`<div class="card" style="margin-top:12px;text-align:center"><div class="final">${us>them?'Victoire des Dragons !':us<them?'Défaite':'Match nul'}</div></div>`+
+    mid=`<div class="card" style="margin-top:12px;text-align:center"><div class="final">${us>them?'Victoire des Dragons !':us<them?'Défaite':'Match nul'}</div><button data-img="1" style="margin-top:12px;font:600 15px var(--f);background:var(--gold);color:#12280f;border:0;border-radius:10px;padding:12px 18px;cursor:pointer">Image du score à partager</button></div>`+
       (g.rows&&g.rows.length?`<div class="card stats"><table><thead><tr><th class="l">Joueur</th><th>H/AB</th><th>R</th><th>RBI</th><th>HR</th><th>BB</th><th>SB</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td class="l">${esc(r[0])}</td><td>${+r[1]}/${+r[2]}</td><td>${+r[3]}</td><td>${+r[4]}</td><td>${+r[5]}</td><td>${+r[6]}</td><td>${+r[7]}</td></tr>`).join('')}</tbody></table></div>`:'');
   }else if(g.att){
     mid=`<div class="play"><div>${diamond(g.bases||[])}</div><div>
@@ -206,7 +208,8 @@ function next(){
 }
 function closePop(){clearTimeout(ptm);const c=document.querySelector('.pc');if(!c){next();return}c.classList.add('out');setTimeout(()=>{$('layer').innerHTML='';next()},300)}
 $('layer').addEventListener('click',closePop);
-document.addEventListener('click',e=>{const b=e.target.closest('[data-g]');if(b){cur=b.dataset.g;render()}});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-g]');if(b){cur=b.dataset.g;render()}
+  if(e.target.closest('[data-img]')){const g=games.find(x=>x.id===cur);if(g&&window.DragonsScorecard)DragonsScorecard.show({opp:g.opp,date:g.date,us:g.us,them:g.them,inn:g.inn,first:g.first,home:g.home})}});
 setInterval(()=>{const f=document.querySelector('.foot');const g=games.find(x=>x.id===cur);if(f&&g)f.textContent=`Mis à jour ${ago(g.updated)} · ${location.host}/live`},5000);
 fetchLive();
 </script>

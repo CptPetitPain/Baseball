@@ -160,6 +160,7 @@ tr:last-child td{border-bottom:0}
 <div id="app"></div>
 <div id="layer"></div>
 
+<script src="/match/scorecard.js"></script>
 <script>
 /* ============ Données ============ */
 const KEY='dragons-feuille-club-v1';
@@ -449,7 +450,8 @@ function liveV(){
   else body=s.over?overV(s):(s.half==='att'?attV(m,s):defV(m,s));
   const ro=!mine(m)?`<div class="ro" style="margin-top:12px"><div><b>Lecture seule</b><div class="muted" style="font-size:13px">Saisi sur une autre tablette${m.savedBy?' ('+esc(m.savedBy)+')':''} · mis à jour à ${new Date(m.updated||0).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</div></div><button class="btn small" data-a="take">Prendre la main</button></div>`:'';
   const liveBtn=mine(m)?`<button class="btn small" data-a="live" style="${m.live?'background:#b8322a;color:#fff;border-color:#b8322a':''}">${m.live?'● Diffusion live : ON':'Diffusion live : OFF'}</button>`:(m.live?'<span class="pill" style="background:#b8322a;color:#fff">● En direct</span>':'');
-  return head+`<div class="row" style="justify-content:space-between;margin-top:8px">${liveBtn}${netV()}</div>`+ro+`<div class="stack" style="margin-top:12px">${body}</div>`+navV();
+  const qrBtn=m.live?'<button class="btn small" data-a="qr">QR code</button>':'';
+  return head+`<div class="row" style="justify-content:space-between;margin-top:8px"><span class="row">${liveBtn}${qrBtn}</span>${netV()}</div>`+ro+`<div class="stack" style="margin-top:12px">${body}</div>`+navV();
 }
 function navV(){
   const ic={
@@ -586,6 +588,7 @@ function recapV(m,s){
   <div class="label">Toutes les actions</div>
   <div class="card log">${logV(s)||'<span class="muted">Aucune action pour l’instant.</span>'}</div>
   <button class="btn" data-a="copy">Copier le récap (texte)</button>
+  <button class="btn" data-a="scoreimg">Image du score à partager</button>
   ${m.linkedMatchId?`<button class="btn primary" data-a="pushres">Envoyer le score dans Résultats</button><p class="muted" style="margin:-6px 0 0;font-size:13px">Remplace le score par manche de « ${esc((db.cal.find(x=>x.id===m.linkedMatchId)||{}).label||'ce match')} » dans l’appli.</p>`:''}`;
 }
 function defTable(m,s){
@@ -671,6 +674,8 @@ document.addEventListener('click',ev=>{
     case'take':sheet(`<h3>Prendre la main ?</h3><p class="muted" style="margin:0">Tu deviens la personne qui saisit ce match. L’autre tablette passera en lecture seule à sa prochaine synchro. À faire seulement si elle ne saisit plus.</p><button class="btn primary" data-a="takeok">Prendre la main</button><button class="btn" data-a="close">Annuler</button>`);break;
     case'takeok':m.device=db.device;touch(m);close();render();toast('Tu saisis ce match');break;
     case'pushres':pushResults();break;
+    case'qr':showQR();break;
+    case'scoreimg':{const st=replay(m);if(window.DragonsScorecard)DragonsScorecard.show({opp:m.opp,date:m.date,us:st.us,them:st.opp,inn:st.inn,first:st.first,home:!!m.home});break}
     case'go':view=v;close();render();break;
     case'tab':tab=v;render();scrollTo(0,0);break;
     case'open':db.current=v;save();view='live';tab=mine(db.matches[v])?'jeu':'recap';render();break;
@@ -723,7 +728,7 @@ document.addEventListener('change',ev=>{
       const bat=(lu.batting||[]).filter(id=>id&&ok(id));if(bat.length)draft.lineup=bat;
       if(def['Lanceur']&&ok(def['Lanceur']))draft.pitcher=def['Lanceur'];
       if(def['Catcher']&&ok(def['Catcher']))draft.catcher=def['Catcher'];
-      if(draft.pitcher&&bat.length&&!bat.includes(draft.pitcher)){draft.dhOn=true;draft.dh=null}
+      if(draft.pitcher&&bat.length&&!bat.includes(draft.pitcher)){draft.dhOn=true;draft.dh=lu.dh&&bat.includes(lu.dh)?lu.dh:null}
       toast(bat.length?'Composition reprise':'Pas encore de composition pour ce match')}
     render()}
 });
@@ -742,6 +747,14 @@ function importFile(f){if(!f)return;const r=new FileReader();r.onload=()=>{try{c
 let lock=null;async function wake(){try{if(view==='live'&&!lock&&navigator.wakeLock){lock=await navigator.wakeLock.request('screen');lock.addEventListener('release',()=>lock=null)}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')wake()});
 
+/* ---- QR code du live (bibliothèque chargée seulement au clic) ---- */
+function loadQR(){return window.qrcode?Promise.resolve():new Promise((ok,ko)=>{const sc=document.createElement('script');sc.src='/match/qrcode.js';sc.onload=ok;sc.onerror=ko;document.head.appendChild(sc)})}
+async function showQR(){
+  const url=location.origin+'/live';
+  sheet(`<h3>Suivre le match en direct</h3><div id="qrbox" style="background:#fff;padding:16px;border-radius:12px;align-self:center;line-height:0"></div><p style="margin:0;text-align:center;font-size:20px;font-weight:700">${esc(location.host)}/live</p><p class="muted" style="margin:0;text-align:center">Montre ce code aux familles : il ouvre la page live, sans compte.</p><button class="btn" data-a="close">Fermer</button>`);
+  try{await loadQR();const q=qrcode(0,'M');q.addData(url);q.make();const box=document.getElementById('qrbox');box.innerHTML=q.createSvgTag({cellSize:7,margin:0});const svg=box.querySelector('svg');if(svg){svg.style.width='min(260px,70vw)';svg.style.height='auto'}}
+  catch(e){document.getElementById('qrbox').outerHTML='<p class="muted" style="margin:0">QR code indisponible : donne simplement l’adresse ci-dessus.</p>'}
+}
 boot();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/match/sw.js').catch(()=>{});
 </script>

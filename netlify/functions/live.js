@@ -6,7 +6,8 @@ import { getStore } from "@netlify/blobs";
    le nombre de spectateurs, la fonction ne tourne qu'environ 4 fois par minute. */
 
 const LIVE_PREFIX = "live/";
-const MAX_AGE_MS = 12 * 60 * 60 * 1000; // un match reste visible 12 h après la dernière action
+const MAX_AGE_MS = 12 * 60 * 60 * 1000; // un match en cours reste visible 12 h après la dernière action
+const AFTER_END_MS = 30 * 60 * 1000; // un match terminé reste visible 30 min (écran final + image du score)
 
 function getBlobStore() {
   const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
@@ -30,7 +31,8 @@ export default async () => {
       if (!raw) continue;
       try {
         const g = JSON.parse(raw);
-        if (Date.now() - (g.updated || 0) < MAX_AGE_MS) games.push(g);
+        const age = Date.now() - (g.updated || 0);
+        if (age < (g.over ? AFTER_END_MS : MAX_AGE_MS)) games.push(g);
       } catch (e) { /* entrée illisible ignorée */ }
     }
     games.sort((a, b) => (b.updated || 0) - (a.updated || 0));
