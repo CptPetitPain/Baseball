@@ -167,7 +167,7 @@ const NOTES=['Bras faible CF','Bras faible LF','Bras faible RF','Catcher lent su
 
 const uid=()=>Math.random().toString(36).slice(2,9);
 let db=load();
-function blank(){return{roster:[],matches:{},current:null,settings:{limit:90,warn:75},device:uid()+uid(),role:null,user:null,cal:[],lineups:{},deleted:[]}}
+function blank(){return{hidden:[],claimed:[],roster:[],matches:{},current:null,settings:{limit:90,warn:75},device:uid()+uid(),role:null,user:null,cal:[],lineups:{},deleted:[]}}
 function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.matches)return Object.assign(blank(),d)}catch(e){}return blank()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Sauvegarde impossible sur ce navigateur')}}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -354,6 +354,12 @@ function pubOf(m){
     pitcher:!att&&s.pitcher?lab(s.pitcher):null,dOuts:!att?s.do:0,dBases:!att?s.dB.map(Boolean):[false,false,false],
     us:s.us,them:s.opp,feed:feed.slice(-30).reverse(),rows};
 }
+function applyClub(st){
+  db.roster=mapRoster(st.roster||[]);
+  db.claimed=Object.values(st.accounts||{}).map(a=>a.playerId);
+}
+/* joueurs visibles dans les listes (les masqués restent dans les matchs déjà saisis) */
+const visRoster=()=>db.roster.filter(p=>!(db.hidden||[]).includes(p.id));
 function mapRoster(r){
   const cnt={};r.forEach(p=>{const k=(p.prenom||'').trim();if(k)cnt[k]=(cnt[k]||0)+1});
   return r.map(p=>{const pr=(p.prenom||'').trim(),no=(p.nom||'').trim();let name=pr||no||'?';
@@ -368,7 +374,7 @@ async function boot(){
     if(!r.session){auth='none'}
     else{
       db.role=r.session.role;db.user=r.session.username;
-      db.roster=mapRoster(r.state.roster||[]);
+      applyClub(r.state);
       db.cal=(r.state.matches||[]).filter(m=>!m.cancelled).map(m=>({id:m.id,label:m.label,date:m.date,opp:m.opponent,loc:m.location,season:m.season}));
       db.lineups=r.state.lineups||{};save();
       auth=isStaff(db.role)?'ok':'player';
@@ -424,9 +430,17 @@ function rosterV(){
       <div class="row" style="flex-wrap:nowrap"><label style="flex:1">Limite par jour<input id="lim" inputmode="numeric" value="${db.settings.limit}"></label><label style="flex:1">Alerte à<input id="warn" inputmode="numeric" value="${db.settings.warn}"></label></div>
       <button class="btn small" data-a="setlim">Enregistrer les limites</button></div>
     <div class="label">Effectif du club</div>
-<p class="muted" style="margin:0">L’effectif vient de l’appli Dragons. Pour ajouter un joueur ou changer un numéro, passe par l’onglet Suivi de l’appli.</p>
-    <div class="list">${db.roster.map(p=>`<div class="item"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b> <span class="muted">${esc(p.full)}</span></span></div>`).join('')}</div>
-
+    <div class="card stack">
+      <div class="label">Ajouter un joueur pas encore inscrit</div>
+      <div class="row" style="flex-wrap:nowrap"><input id="np" placeholder="Prénom" autocomplete="off"><input id="nn" placeholder="Nom" autocomplete="off"><input id="nnum" placeholder="N°" inputmode="numeric" style="width:70px;flex:none"></div>
+      <button class="btn primary" data-a="addplayer">Ajouter à l’effectif du club</button>
+      <p class="muted" style="margin:0;font-size:13px">Il apparaît aussi dans l’appli (Suivi, Compo & changements). Plus tard, il pourra créer son compte en choisissant son nom.</p>
+    </div>
+    <div class="list">${db.roster.map(p=>{const hid=(db.hidden||[]).includes(p.id),acc=(db.claimed||[]).includes(p.id);
+      return `<div class="item" style="${hid?'opacity:.55':''}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b> <span class="muted">${esc(p.full)}${acc?' · inscrit':''}</span></span>
+      <button class="btn small ghost" data-a="editp" data-v="${p.id}">Modifier</button>
+      <button class="btn small ghost" data-a="hidep" data-v="${p.id}">${hid?'Afficher':'Masquer'}</button></div>`}).join('')}</div>
+    <p class="muted" style="margin:0;font-size:13px">Masquer : le joueur n’apparaît plus dans les listes de cette tablette (il reste dans l’effectif du club et dans les matchs déjà saisis).</p>
   </div>`;
 }
 
@@ -440,12 +454,13 @@ function setupV(){
     <label>Date<input id="date" type="date" value="${d.date}"></label>
     <div class="row" style="flex-wrap:nowrap"><button class="btn ${d.home?'primary':''}" style="flex:1" data-a="home" data-v="1">Domicile · Ronchin</button><button class="btn ${!d.home?'primary':''}" style="flex:1" data-a="home" data-v="0">Extérieur</button></div>
     <div class="label">Pitcher partant</div>
-    <div class="chips">${db.roster.map(p=>`<button class="chip ${d.pitcher===p.id?'sel':''}" data-a="spitch" data-v="${p.id}">${esc(p.name)}</button>`).join('')}</div>
+    <div class="chips">${visRoster().map(p=>`<button class="chip ${d.pitcher===p.id?'sel':''}" data-a="spitch" data-v="${p.id}">${esc(p.name)}</button>`).join('')}</div>
     ${d.pitcher?`<div class="row" style="flex-wrap:nowrap"><button class="btn ${!d.dhOn?'primary':''}" style="flex:1" data-a="dhon" data-v="0">Le pitcher frappe</button><button class="btn ${d.dhOn?'primary':''}" style="flex:1" data-a="dhon" data-v="1">DH pour le pitcher</button></div>
     ${d.dhOn?`<div class="alert ${d.dh?'':'warn'}">${d.dh?`${esc(nm(d.dh))} frappe à la place de ${esc(nm(d.pitcher))}.`:`Ajoute ton DH dans l’ordre puis touche « DH » à côté de son nom. ${esc(nm(d.pitcher))} ne frappe pas.`}</div>`:''}`:''}
     <div class="label">Ordre des frappeurs · touche les joueurs dans l’ordre</div>
-    <div class="list">${d.lineup.map((id,i)=>`<div class="item sel"><span class="n">${i+1}</span><span class="grow"><b>${esc(nm(id))}</b>${d.dhOn&&d.dh===id?dhTag:''} <span class="muted">#${esc(P(id).num)}</span></span>${d.dhOn?`<button class="btn small ${d.dh===id?'primary':'ghost'}" data-a="sdh" data-v="${id}">DH</button>`:''}<button class="btn small ghost" data-a="lup" data-v="${i}" ${i?'':'disabled'} aria-label="Monter">↑</button><button class="btn small ghost" data-a="lrm" data-v="${i}" aria-label="Retirer">✕</button></div>`).join('')||'<p class="muted">Personne pour l’instant.</p>'}</div>
-    <div class="chips">${db.roster.filter(p=>!d.lineup.includes(p.id)&&!(d.dhOn&&p.id===d.pitcher)).map(p=>`<button class="chip" data-a="ladd" data-v="${p.id}">${esc(p.num?p.num+' · ':'')}${esc(p.name)}</button>`).join('')}</div>
+    <div class="list">${d.lineup.map((id,i)=>`<div class="item sel"><span class="n">${i+1}</span><span class="grow"><b>${esc(nm(id))}</b>${d.dhOn&&d.dh===id?dhTag:''}${P(id).num?` <span class="muted">#${esc(P(id).num)}</span>`:''}</span>${d.dhOn?`<button class="btn small ${d.dh===id?'primary':'ghost'}" data-a="sdh" data-v="${id}">DH</button>`:''}<button class="btn small ghost" data-a="lup" data-v="${i}" ${i?'':'disabled'} aria-label="Monter">↑</button><button class="btn small ghost" data-a="lrm" data-v="${i}" aria-label="Retirer">✕</button></div>`).join('')||'<p class="muted">Personne pour l’instant.</p>'}</div>
+    <div class="chips">${visRoster().filter(p=>!d.lineup.includes(p.id)&&!(d.dhOn&&p.id===d.pitcher)).map(p=>`<button class="chip" data-a="ladd" data-v="${p.id}">${esc(p.num?p.num+' · ':'')}${esc(p.name)}</button>`).join('')}</div>
+    <div class="row" style="flex-wrap:nowrap"><input id="qadd" placeholder="Joueur pas inscrit : Prénom Nom" autocomplete="off"><button class="btn small" data-a="qadd">Ajouter</button></div>
     <button class="btn primary" data-a="start" ${d.lineup.length&&(!d.dhOn||d.dh)?'':'disabled'}>Commencer le match</button>
   </div>`;
 }
@@ -501,7 +516,7 @@ function attV(m,s){
     <div class="ondeck muted">Ensuite : ${esc(next)}</div></div>
   <div class="row" style="flex-wrap:nowrap"><button class="btn" style="flex:1" data-a="undo" ${m.events.length?'':'disabled'}>↶ Annuler</button><button class="btn" style="flex:1" data-a="endhalf">Fin d’attaque</button></div>`;
 }
-window.bench=bench;function bench(s){return db.roster.filter(p=>!s.lineup.includes(p.id)&&!(s.dh&&p.id===s.pitcher))}
+window.bench=bench;function bench(s){return visRoster().filter(p=>!s.lineup.includes(p.id)&&!(s.dh&&p.id===s.pitcher))}
 const dhTag='<span class="tag h" style="margin-left:6px">DH</span>';
 function showCount(){return db.settings.count!==false}
 function keyR(r){const[c,l,g]=RES[r];return`<button class="key ${g==='hit'?'hit':g==='out'?'out':''}" data-a="pa" data-v="${r}"><b>${c}</b><small>${l}</small></button>`}
@@ -566,7 +581,7 @@ function overV(s){
 function lineupV(m,s){
   return `${s.pitcher?`<div class="card"><div class="label">Pitcher</div><b>${esc(nm(s.pitcher))}</b>${s.dh?` <span class="muted">· ne frappe pas, DH : ${esc(nm(s.dh))}</span>`:''}</div>`:''}
   <div class="label">Ordre actuel · touche « Remplacer » pour un changement</div>
-  <div class="list">${s.lineup.map((id,i)=>`<div class="item ${i===s.bat&&s.half==='att'?'sel':''}"><span class="n">${i+1}</span><span class="grow"><b>${esc(nm(id))}</b>${s.dh===id?dhTag:''} <span class="muted">#${esc(P(id).num)}</span></span><button class="btn small" data-a="subsheet" data-v="${i}">Remplacer</button></div>`).join('')}</div>
+  <div class="list">${s.lineup.map((id,i)=>`<div class="item ${i===s.bat&&s.half==='att'?'sel':''}"><span class="n">${i+1}</span><span class="grow"><b>${esc(nm(id))}</b>${s.dh===id?dhTag:''}${P(id).num?` <span class="muted">#${esc(P(id).num)}</span>`:''}</span><button class="btn small" data-a="subsheet" data-v="${i}">Remplacer</button></div>`).join('')}</div>
   <div class="label">Remplaçants</div>
   <div class="chips">${bench(s).map(p=>`<span class="chip">${esc(p.name)}</span>`).join('')||'<span class="muted">Personne sur le banc.</span>'}</div>
   ${s.log.filter(e=>e.t==='sub').length?`<div class="label">Changements faits</div>`+s.log.filter(e=>e.t==='sub').map(e=>`<div class="muted">Inning ${e.inn} : ${esc(nm(e.id))} remplace ${esc(nm(e.old))}</div>`).join(''):''}`;
@@ -664,6 +679,7 @@ function subSheet(slot){
   const s=replay(M()),out=s.lineup[slot],bench=window.bench(s);
   const onBase=s.B.includes(out);
   sheet(`<h3>Remplacer ${esc(nm(out))}</h3><p class="muted" style="margin:0">${slot+1}<sup>e</sup> dans l’ordre${onBase?' · actuellement sur base (coureur suppléant)':''}</p>
+  <div class="row" style="flex-wrap:nowrap"><input id="qsub" placeholder="Joueur pas inscrit : Prénom Nom" autocomplete="off"><button class="btn small" data-a="qsub" data-v="${slot}">Ajouter</button></div>
   <div class="list">${bench.map(p=>`<button class="item" data-a="sub" data-v="${slot}:${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span></button>`).join('')||'<p class="muted">Personne sur le banc. Ajoute des joueurs dans l’effectif.</p>'}</div>
   <button class="btn" data-a="close">Fermer</button>`);
 }
@@ -673,11 +689,11 @@ function derSheet(){
 }
 function catSheet(){
   const s=replay(M());
-  sheet(`<h3>Qui est catcher ?</h3><div class="list">${db.roster.map(p=>`<button class="item ${s.catcher===p.id?'sel':''}" data-a="cat" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span></button>`).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
+  sheet(`<h3>Qui est catcher ?</h3><div class="list">${visRoster().map(p=>`<button class="item ${s.catcher===p.id?'sel':''}" data-a="cat" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span></button>`).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
 }
 function pchSheet(){
   const m=M(),s=replay(m),lim=+db.settings.limit||90;
-  sheet(`<h3>Qui est pitcher ?</h3><div class="list">${db.roster.map(p=>{const n=(s.pc[p.id]||0)+dayPitches(p.id,m.date,m.id);return`<button class="item ${s.pitcher===p.id?'sel':''}" data-a="pch" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span><span class="num" style="font-size:18px;color:${n>=lim?'var(--out)':'var(--muted)'}">${n?n+' aujourd’hui':''}</span></button>`}).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
+  sheet(`<h3>Qui est pitcher ?</h3><div class="list">${visRoster().map(p=>{const n=(s.pc[p.id]||0)+dayPitches(p.id,m.date,m.id);return`<button class="item ${s.pitcher===p.id?'sel':''}" data-a="pch" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span><span class="num" style="font-size:18px;color:${n>=lim?'var(--out)':'var(--muted)'}">${n?n+' aujourd’hui':''}</span></button>`}).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
 }
 
 /* ============ Actions ============ */
@@ -710,6 +726,31 @@ document.addEventListener('click',ev=>{
     case'lrm':syncDraft();if(draft.lineup[+v]===draft.dh)draft.dh=null;draft.lineup.splice(+v,1);render();break;
     case'lup':{syncDraft();const i=+v,l=draft.lineup;[l[i-1],l[i]]=[l[i],l[i-1]];render();break}
     case'start':{syncDraft();const id=uid();db.matches[id]={id,opp:draft.opp.trim()||'Adversaire',date:draft.date||today(),home:draft.home,lineup:draft.lineup,pitcher:draft.pitcher,catcher:draft.catcher||null,dh:draft.dhOn?draft.dh:null,linkedMatchId:draft.link||null,device:db.device,names:Object.fromEntries([...draft.lineup,draft.pitcher,draft.catcher].filter(Boolean).map(x=>[x,nm(x)])),events:[],created:Date.now()};touch(db.matches[id]);db.current=id;save();view='live';tab='jeu';render();break}
+    case'qadd':case'qsub':{const inp=document.getElementById(a==='qadd'?'qadd':'qsub'),txt=(inp&&inp.value||'').trim();if(!txt){toast('Tape le prénom (et le nom)');break}
+      if(a==='qadd')syncDraft();
+      const [pr,...rest]=txt.split(/\s+/),before=new Set(db.roster.map(x=>x.id));
+      api({action:'addPlayer',prenom:pr,nom:rest.join(' ')}).then(r=>{applyClub(r.state);save();
+        const nw=db.roster.find(x=>!before.has(x.id));
+        if(a==='qadd'){if(nw)draft.lineup.push(nw.id);render();toast(txt+' ajouté et placé dans l’ordre')}
+        else{close();if(nw)push({k:'SUB',slot:+v,id:nw.id,run:true});toast(txt+' entre en jeu')}
+      }).catch(e=>toast(e.status?e.message:'Pas de réseau : ajout impossible pour l’instant'));break}
+    case'hidep':db.hidden=(db.hidden||[]).includes(v)?db.hidden.filter(x=>x!==v):[...(db.hidden||[]),v];save();render();break;
+    case'addplayer':{const pr=document.getElementById('np').value.trim(),no=document.getElementById('nn').value.trim(),nu=document.getElementById('nnum').value.trim();
+      if(!pr&&!no){toast('Indique au moins un prénom');break}
+      api({action:'addPlayer',prenom:pr,nom:no,numero:nu}).then(r=>{applyClub(r.state);save();render();toast((pr||no)+' ajouté à l’effectif')}).catch(e=>toast(e.status?e.message:'Pas de réseau : ajout impossible pour l’instant'));break}
+    case'editp':{const pl=db.roster.find(x=>x.id===v);if(!pl)break;const[pr,...rest]=(pl.full||'').split(' ');
+      const acc=(db.claimed||[]).includes(v);
+      sheet(`<h3>Modifier ${esc(pl.name)}</h3>
+        <label>Prénom<input id="ep" value="${esc(pr||'')}"></label><label>Nom<input id="en" value="${esc(rest.join(' '))}"></label><label>Numéro<input id="eu" inputmode="numeric" value="${esc(pl.num)}"></label>
+        <button class="btn primary" data-a="savep" data-v="${v}">Enregistrer</button>
+        ${acc?'<p class="muted" style="margin:0;font-size:13px">Ce joueur a un compte : la suppression se fait dans l’onglet Suivi de l’appli.</p>':`<button class="btn" style="color:var(--out);border-color:var(--out)" data-a="delp" data-v="${v}">Supprimer de l’effectif du club</button>`}
+        <button class="btn" data-a="close">Annuler</button>`);break}
+    case'savep':{const vals={prenom:document.getElementById('ep').value.trim(),nom:document.getElementById('en').value.trim().toUpperCase(),numero:document.getElementById('eu').value.trim()};
+      const pl=db.roster.find(x=>x.id===v),[opr,...orest]=(pl.full||'').split(' '),old={prenom:opr||'',nom:orest.join(' '),numero:pl.num||''};
+      close();(async()=>{try{let r;for(const f of['prenom','nom','numero'])if(vals[f]!==old[f])r=await api({action:'updatePlayerField',playerId:v,field:f,value:vals[f]});
+        if(r){applyClub(r.state);save();render();toast('Joueur modifié')}}catch(e){toast(e.status?e.message:'Pas de réseau : modification impossible pour l’instant')}})();break}
+    case'delp':sheet(`<h3>Supprimer ce joueur ?</h3><p style="margin:0">Il sera retiré de l’effectif du club (Suivi, présences, compositions). Les matchs déjà saisis gardent son nom.</p><button class="btn" style="background:var(--out);color:#fff;border-color:var(--out)" data-a="delpok" data-v="${v}">Supprimer</button><button class="btn" data-a="close">Annuler</button>`);break;
+    case'delpok':close();api({action:'deletePlayer',playerId:v}).then(r=>{applyClub(r.state);save();render();toast('Joueur supprimé')}).catch(e=>toast(e.status?e.message:'Pas de réseau'));break;
     case'setlim':db.settings.limit=+document.getElementById('lim').value||90;db.settings.warn=+document.getElementById('warn').value||75;save();toast('Limites enregistrées');break;
     case'p':push({k:'P',v});break;
     case'pa':push({k:'PA',res:v});toast(RES[v][1]);break;

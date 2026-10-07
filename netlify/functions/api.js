@@ -886,6 +886,24 @@ async function applyMutation(store, state, session, action, body) {
       s = logAction(s, actingUser, `a renommé le compte "${oldUsername}" → "${uname}"`);
       break;
     }
+    case "addPlayer": {
+      // Joueur pas encore inscrit : ajouté à l'effectif par le staff. Il pourra
+      // plus tard créer son compte en choisissant son nom dans la liste.
+      if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
+      const prenom = String(body.prenom || "").trim().slice(0, 40);
+      const nom = String(body.nom || "").trim().slice(0, 40);
+      const numero = String(body.numero || "").trim().replace(/[^0-9]/g, "").slice(0, 3);
+      if (!prenom && !nom) return { error: "Indique au moins un prénom." };
+      const id = slugify(nom || "joueur", prenom || "x") + "-" + crypto.randomBytes(3).toString("hex");
+      s = {
+        ...s,
+        roster: [...s.roster, { id, nom: nom.toUpperCase(), prenom, numero, pos1: "", pos2: "", pos3: "" }],
+        presence: { ...s.presence, [id]: {} },
+        positions: { ...s.positions, [id]: { pos1: "", pos2: "", pos3: "" } },
+      };
+      s = logAction(s, actingUser, `a ajouté le joueur "${prenom} ${nom.toUpperCase()}" à l'effectif`);
+      break;
+    }
     case "updatePlayerField": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { playerId, field, value } = body;

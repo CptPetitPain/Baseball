@@ -152,7 +152,7 @@ textarea.copy{position:fixed;opacity:0;pointer-events:none}
       <h2>Effectif</h2>
       <div class="btns"><button type="button" id="manageBtn">Masquer des joueurs</button><button type="button" id="hiddenBtn" hidden></button></div>
       <form class="add" id="addForm">
-        <input id="newName" placeholder="Ajouter un joueur" autocomplete="off">
+        <input id="newName" placeholder="Joueur pas inscrit : Prénom Nom" autocomplete="off">
         <button type="submit">Ajouter</button>
       </form>
     </div>
@@ -511,6 +511,15 @@ function hidePlayer(n){
   if(!S.hidden.includes(n)) S.hidden.push(n);
   save(); render(); toast(`${n} masqué`);
 }
+function swapName(oldN, newN){
+  const swap = x => x === oldN ? newN : x;
+  S.games.forEach(g => {
+    if(g.field) for(const k in g.field) g.field[k] = swap(g.field[k]);
+    if(Array.isArray(g.order)) g.order = g.order.map(swap);
+    if(Array.isArray(g.subs)) g.subs.forEach(sb => ['out','in','player'].forEach(f => { if(sb[f]) sb[f] = swap(sb[f]); }));
+  });
+  S.hidden = S.hidden.map(swap);
+}
 function renamePlayer(oldN, newN){
   if(!newN || newN === oldN){ render(); return; }
   if(S.players.includes(newN)){ toast('Ce nom existe déjà dans l\'effectif'); render(); return; }
@@ -534,7 +543,22 @@ $('hiddenList').addEventListener('click', e => { const b = e.target.closest('[da
 $('addForm').addEventListener('submit', e => {
   e.preventDefault();
   const v = $('newName').value.trim();
-  if(v && !S.players.includes(v)){ S.players.push(v); S.extra.push(v); save(); render(); }
+  if(v && !S.players.includes(v)){
+    const [prenom, ...rest] = v.split(/\s+/);
+    api({action:'addPlayer', prenom, nom: rest.join(' ')}).then(r => {
+      const raw = clubNames(r.state.roster || []), byName = {};
+      Object.entries(raw).forEach(([n, id]) => { byName[S.alias[n] || n] = id; });
+      const known = new Set(Object.values(CLUB.byName));
+      // un homonyme peut changer l'affichage d'un joueur existant (« Hugo » devient « Hugo D. ») : on suit
+      const idToOld = {}; Object.entries(CLUB.byName).forEach(([n, id]) => { idToOld[id] = n; });
+      Object.entries(byName).forEach(([n, id]) => { const o = idToOld[id]; if(o && o !== n) swapName(o, n); });
+      CLUB.byName = S.clubMap = byName;
+      const added = Object.keys(byName).find(n => !known.has(byName[n]));
+      S.club = Object.keys(byName).sort((a,b) => a.localeCompare(b,'fr'));
+      S.players = [...new Set([...S.club, ...S.extra])];
+      save(); render(); toast((added || v) + ' ajouté à l\'effectif du club');
+    }).catch(() => { S.players.push(v); S.extra.push(v); save(); render(); toast('Hors ligne : ' + v + ' ajouté sur cet ordinateur seulement'); });
+  }
   $('newName').value='';
 });
 $('subs').addEventListener('change', e => {
@@ -774,6 +798,8 @@ async function boot(){
     $('who').textContent = r.session.username;
     const raw = clubNames(r.state.roster || []), byName = {};
     Object.entries(raw).forEach(([n, id]) => { byName[S.alias[n] || n] = id; });
+    const idToOld = {}; Object.entries(S.clubMap || {}).forEach(([n, id]) => { idToOld[id] = n; });
+    Object.entries(byName).forEach(([n, id]) => { const o = idToOld[id]; if(o && o !== n) swapName(o, n); });
     CLUB.byName = S.clubMap = byName;
     CLUB.presence = r.state.presence || {};
     const cs = r.state.currentSeason;
