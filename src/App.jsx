@@ -547,6 +547,9 @@ export default function DragonsApp() {
                 >
                   Ma présence
                 </button>
+                <a className="tsw" href="/match/" style={{ textDecoration: "none" }}>
+                  Feuille de match
+                </a>
               </div>
             ) : (
               <div className="tab-switch">

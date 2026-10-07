@@ -47,8 +47,8 @@ Va sur `https://ton-site.netlify.app/?owner`, clique sur "Créer un compte", une
    Cela crée un dossier `dist/`.
 4. Glisse-dépose le dossier `dist/` dans la zone de dépôt Netlify.
 
-⚠️ Cette méthode simple ne déploie **que le site**, pas la fonction de stockage
-(`netlify/functions/storage.js`). Pour que les comptes et les présences se sauvegardent
+⚠️ Cette méthode simple ne déploie **que le site**, pas la fonction serveur
+(`netlify/functions/api.js`). Pour que les comptes et les présences se sauvegardent
 vraiment, il faut passer par la méthode Git (ci-dessous), qui déploie tout automatiquement,
 fonction comprise.
 
@@ -72,6 +72,24 @@ npm run dev
 ```
 Attention : en local, la fonction `/.netlify/functions/api` n'est disponible que si tu
 utilises la CLI Netlify (`netlify dev`) plutôt que `npm run dev` seul.
+
+## Feuille de match (`/match/`)
+
+Page de saisie en direct pour le coaching staff : `https://ton-site.netlify.app/match/`
+(aussi accessible par l'onglet **Feuille de match** de l'appli, côté staff).
+
+- Utilise la session de l'appli : il faut être connecté avec un compte staff ou propriétaire.
+- Effectif, calendrier et Composition (ordre au bâton, lanceur, receveur) sont repris de l'appli.
+- Chaque action est enregistrée d'abord sur l'appareil, puis envoyée au serveur dès qu'il y a
+  du réseau. Une coupure au terrain ne fait rien perdre.
+- Tout le staff connecté voit les feuilles. Un match se saisit sur un seul appareil à la fois ;
+  les autres sont en lecture seule (bouton « Prendre la main » si besoin).
+- Le récap peut envoyer le score par manche dans l'onglet Résultats.
+- Installable sur tablette/téléphone Android : Chrome → menu ⋮ → « Ajouter à l'écran d'accueil ».
+
+Fichiers : `public/match/` (page, manifest, service worker, icônes) et les actions
+`getScoresheets`, `saveScoresheet`, `deleteScoresheet`, `setInnings` dans
+`netlify/functions/api.js` (toutes réservées au staff, vérifiées côté serveur).
 
 ## Ce qui a changé par rapport à la version "artifact" Claude
 

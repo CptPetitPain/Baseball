@@ -544,6 +544,21 @@ async function applyMutation(store, state, session, action, body) {
       break;
     }
 
+    case "setInnings": {
+      // Score complet envoyé depuis la feuille de match (/match/).
+      if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
+      const { matchId, dragons, adversaire } = body;
+      if (!s.matches.some((m) => m.id === matchId)) return { error: "Match introuvable." };
+      const okArr = (a) => Array.isArray(a) && a.length === 7 &&
+        a.every((v) => v === null || (Number.isInteger(v) && v >= 0 && v <= 99));
+      if (!okArr(dragons) || !okArr(adversaire)) return { error: "Score invalide." };
+      const matches = s.matches.map((m) => (m.id === matchId ? { ...m, innings: { dragons, adversaire } } : m));
+      s = { ...s, matches };
+      const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
+      s = logAction(s, actingUser, `a envoyé le score de ${matchLabel} depuis la feuille de match`);
+      break;
+    }
+
     case "addTeam": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const id = "t-" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
@@ -683,6 +698,70 @@ async function applyMutation(store, state, session, action, body) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Feuilles de match (saisie en direct depuis /match/)                  */
+/* Chaque feuille est stockée sous sa propre clé pour que deux tablettes */
+/* qui saisissent deux matchs différents ne s'écrasent jamais.          */
+/* ------------------------------------------------------------------ */
+
+const SHEET_PREFIX = "scoresheet/";
+const SHEET_MAX_BYTES = 300 * 1024;
+const SHEET_FIELDS = ["id", "opp", "date", "home", "first", "lineup", "pitcher", "catcher", "dh", "events", "names", "created", "updated", "linkedMatchId", "device"];
+
+function cleanSheet(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (typeof raw.id !== "string" || !/^[a-z0-9]{4,24}$/.test(raw.id)) return null;
+  if (!Array.isArray(raw.events) || raw.events.length > 5000) return null;
+  if (!Array.isArray(raw.lineup) || raw.lineup.length > 20) return null;
+  const sheet = {};
+  SHEET_FIELDS.forEach((k) => { if (raw[k] !== undefined) sheet[k] = raw[k]; });
+  sheet.updated = Number(sheet.updated) || Date.now();
+  if (JSON.stringify(sheet).length > SHEET_MAX_BYTES) return null;
+  return sheet;
+}
+
+async function handleScoresheet(store, state, session, action, body) {
+  if (!isStaffRole(session.role)) return fail(403, "Réservé au coaching staff.");
+
+  if (action === "getScoresheets") {
+    const { blobs } = await store.list({ prefix: SHEET_PREFIX });
+    const sheets = [];
+    for (const b of blobs) {
+      const raw = await store.get(b.key);
+      if (raw) {
+        try { sheets.push(JSON.parse(raw)); } catch (e) { /* ignore corrupted entry */ }
+      }
+    }
+    return ok({ sheets });
+  }
+
+  if (action === "saveScoresheet") {
+    const sheet = cleanSheet(body.sheet);
+    if (!sheet) return fail(400, "Feuille de match invalide.");
+    const key = SHEET_PREFIX + sheet.id;
+    const prevRaw = await store.get(key);
+    if (prevRaw) {
+      const prev = JSON.parse(prevRaw);
+      // Une autre tablette a la main et sa version est plus récente : on ne l'écrase pas.
+      if (prev.device && prev.device !== sheet.device && (prev.updated || 0) > sheet.updated) {
+        return ok({ conflict: true, sheet: prev });
+      }
+    }
+    sheet.savedBy = session.username;
+    await store.set(key, JSON.stringify(sheet));
+    return ok({ saved: true, updated: sheet.updated });
+  }
+
+  if (action === "deleteScoresheet") {
+    const id = String(body.sheetId || "");
+    if (!/^[a-z0-9]{4,24}$/.test(id)) return fail(400, "Feuille introuvable.");
+    await store.delete(SHEET_PREFIX + id);
+    return ok({ deleted: true });
+  }
+
+  return fail(400, "Action inconnue.");
+}
+
+/* ------------------------------------------------------------------ */
 /* Handler                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -717,6 +796,10 @@ export async function handler(event) {
 
     const session = await requireSession(store, token, state);
     if (!session) return fail(401, "Session invalide, reconnecte-toi.");
+
+    if (["getScoresheets", "saveScoresheet", "deleteScoresheet"].includes(action)) {
+      return await handleScoresheet(store, state, session, action, body);
+    }
 
     const result = await applyMutation(store, state, session, action, body);
     if (result.error) return fail(400, result.error);
