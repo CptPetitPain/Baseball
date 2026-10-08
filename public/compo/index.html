@@ -309,25 +309,51 @@ function apply(src, tgt){
 let view = 'avant';
 const posIn = (F, name) => { const p = POS.find(p => F[p.k] === name && (!p.dh || S.dh)); return p ? p.k : ''; };
 function after(){
-  const F = {...S.field}, O = [...S.order];
+  const F = {...S.field}, O = [...S.order], notes = [];
   if(!S.dh) delete F.DH;
   const keyOf = n => Object.keys(F).find(k => F[k]===n);
-  const vac = [];
-  S.subs.filter(s => s.kind==='rep' && s.out && s.in).forEach(s => {
-    const k = keyOf(s.out), j = keyOf(s.in);
-    if(j) delete F[j];
-    if(k) F[k] = s.in;
-    const bi = O.indexOf(s.out);
-    if(bi >= 0){ if(!O.includes(s.in)) O[bi] = s.in; else { O[bi] = null; vac.push(bi); } }
+  const vac = [], gone = new Set();
+  let term = false, dhH = S.dh ? S.field.DH : null;
+  S.subs.filter(s => (s.kind==='rep' && s.out && s.in) || (s.kind==='pos' && s.player && s.to)).forEach(s => {
+    if(s.kind==='rep'){
+      // Réentrée : un joueur remplacé ne revient pas (règle 5.10)
+      if(gone.has(s.in)) notes.push(`⚠ Interdit : ${s.in} est déjà sorti, pas de réentrée (règle 5.10).`);
+      gone.add(s.out);
+      if(s.out === dhH) dhH = s.in;
+      const k = keyOf(s.out), j = keyOf(s.in), bi = O.indexOf(s.out);
+      // Le pitcher frappe à la place du DH : il reste au monticule, fin du DH (règle 5.11 a-10)
+      if(k==='DH' && j==='P'){ delete F.DH; if(bi >= 0) O[bi] = s.in; term = true; notes.push(`${s.in} (pitcher) frappe en ${bi+1} à la place du DH ${s.out}.`); return; }
+      if(j) delete F[j];
+      if(k) F[k] = s.in;
+      if(bi >= 0){ if(!O.includes(s.in)) O[bi] = s.in; else { O[bi] = null; vac.push(bi); } }
+    } else {
+      const j = keyOf(s.player); if(j) delete F[j];
+      if(s.to !== 'Sort'){
+        F[s.to] = s.player;
+        if(!O.includes(s.player) && vac.length) O[vac.shift()] = s.player;
+      } else { gone.add(s.player); const bi = O.indexOf(s.player); if(bi >= 0){ O[bi] = null; vac.push(bi); } }
+    }
   });
-  S.subs.filter(s => s.kind==='pos' && s.player && s.to).forEach(s => {
-    const j = keyOf(s.player); if(j) delete F[j];
-    if(s.to !== 'Sort'){
-      F[s.to] = s.player;
-      if(!O.includes(s.player) && vac.length) O[vac.shift()] = s.player;
-    } else { const bi = O.indexOf(s.player); if(bi >= 0){ O[bi] = null; vac.push(bi); } }
-  });
-  return {F, O};
+  if(S.dh){
+    const P0 = S.field.P, def = n => n && POS.some(q => !q.dh && F[q.k]===n);
+    if(F.P && O.includes(F.P)) term = true;                         // le pitcher est dans l'ordre (joueur de champ au monticule, pitcher qui frappe)
+    if(P0 && def(P0) && F.P !== P0) term = true;                     // l'ancien pitcher passe en défense (5.11 a-8)
+    if(dhH && def(dhH)) term = true;                                // le DH (ou son remplaçant) prend un poste en défense
+    if(term){
+      delete F.DH;
+      const defenders = POS.filter(q => !q.dh).map(q => F[q.k]).filter(Boolean);
+      const before = [...O];
+      for(let i = 0; i < O.length; i++) if(O[i] && !defenders.includes(O[i])) O[i] = null;
+      const waiting = defenders.filter(n => !O.includes(n)).sort((a,b) => (b===F.P) - (a===F.P));
+      for(let i = 0; i < O.length && waiting.length; i++) if(!O[i] && before[i] !== undefined) O[i] = waiting.shift();
+      const changes = O.map((n,i) => n && n !== before[i] ? `${n} frappe en ${i+1}${before[i] ? ' à la place de ' + before[i] : ''}` : '').filter(Boolean);
+      notes.unshift('Fin du DH (règle 5.11) : à partir de là le pitcher frappe.' + (changes.length ? ' ' + changes.join(', ') + '.' : ''));
+    }
+  }
+  const emptyPos = POS.filter(q => !q.dh && Object.values(S.field).some(Boolean) && !F[q.k]).map(q => q.k);
+  if(emptyPos.length) notes.push('Poste vide après les changements : ' + emptyPos.join(', ') + '.');
+  if(S.order.filter(Boolean).length && O.some(n => !n)) notes.push('Il manque un frappeur dans l’ordre après les changements.');
+  return {F, O, notes, term};
 }
 const cur = () => view==='apres' ? after() : {F:S.field, O:S.order};
 
@@ -362,14 +388,10 @@ function render(){
   document.querySelector('.board').classList.toggle('apres', ap);
   ['tabAvant','tabApres'].forEach(id => $(id).setAttribute('aria-selected', String($(id).dataset.view===view)));
   let note = ap ? 'Tous les changements appliqués d\'un coup. Repasse sur « Avant » pour modifier.' : '';
-  if(ap && S.dh){
-    const dhP = F.DH, onDef = n => n && POS.some(q => !q.dh && F[q.k]===n);
-    const oldP = S.field.P, oldPnow = oldP && posIn(F, oldP);
-    if(onDef(dhP) || (oldPnow && oldPnow!=='P' && oldPnow!=='DH')) note += ' Attention : ce changement met fin au DH (règle 5.11), le lanceur devra frapper.';
-  }
+  if(ap) { const A2 = after(); if(A2.notes.length) note += ' ' + A2.notes.join(' '); }
   $('tabNote').textContent = note;
   $('clearField').disabled = $('clearOrder').disabled = ap;
-  $('slots').innerHTML = POS.filter(p => !p.dh || S.dh).map(p => {
+  $('slots').innerHTML = POS.filter(p => !p.dh || (S.dh && !(ap && A.term))).map(p => {
     const n = F[p.k];
     if(ap){
       const ch = n !== S.field[p.k];
@@ -668,7 +690,7 @@ async function drawSheet(){
     x.textAlign='left';
   };
   POS.forEach(p=>{
-    if(p.dh){ if(S.dh) box(W-120, oy+100*k-60, 'DH', F.DH||''); return; }
+    if(p.dh){ if(S.dh && !(ap && !F.DH)) box(W-120, oy+100*k-60, 'DH', F.DH||''); return; }
     box(ox+p.x*k, oy+p.y*k, `${p.k} · ${p.n}`, F[p.k]||'');
   });
 
