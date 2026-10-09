@@ -14,3 +14,29 @@
   for = "/compo/*"
   [headers.values]
     Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/scout/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/logos/logos.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Page d'accueil et numéro de version : toujours revérifiés (mise à jour automatique)
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/version.js"
+  [headers.values]
+    Cache-Control = "no-cache"

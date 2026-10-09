@@ -134,6 +134,10 @@ const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
 }));
 
 const STAFF_ROLES = ["coach", "owner"];
+export const APP_VERSION = "2.6"; // garder identique à public/version.js
+function homeScreen(role) {
+  return isStaffRole(role) || role === "scorer" ? "composition" : "player";
+}
 function isStaffRole(role) {
   return STAFF_ROLES.includes(role);
 }
@@ -245,6 +249,7 @@ export default function DragonsApp() {
   const [authToken, setAuthToken] = useState(null);
   const [screen, setScreen] = useState("login"); // login | signup | player | coach
   const [busy, setBusy] = useState(false);
+  const busyRef = React.useRef(false);
 
   useEffect(() => {
     let storedToken = null;
@@ -263,7 +268,7 @@ export default function DragonsApp() {
             role: res.session.role,
             playerId: res.session.playerId,
           });
-          setScreen(isStaffRole(res.session.role) ? "composition" : "player");
+          setScreen(homeScreen(res.session.role));
         }
         setLoading(false);
       })
@@ -273,11 +278,34 @@ export default function DragonsApp() {
       });
   }, []);
 
+  // Données toujours fraîches : rechargement quand on revient sur l'appli et toutes les 2 min
+  // (résultats saisis depuis la feuille de match, nouvelle compo, présences des autres…)
+  const tokenRef = React.useRef(null);
+  tokenRef.current = authToken;
+  useEffect(() => {
+    let last = Date.now();
+    async function refresh(force) {
+      if (document.visibilityState !== "visible" || busyRef.current) return;
+      if (!force && Date.now() - last < 30000) return;
+      last = Date.now();
+      try {
+        const res = await callApi({ action: "getState", token: tokenRef.current || undefined });
+        if (res && res.state) setState(res.state);
+      } catch (e) { /* hors ligne : on garde l'affichage */ }
+    }
+    const onVis = () => refresh(false);
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    const iv = setInterval(() => refresh(true), 2 * 60 * 1000);
+    return () => { document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onVis); clearInterval(iv); };
+  }, []);
+
   /* Every data-changing action goes through the server API. The server
      verifies the session token and the caller's role before doing
      anything — the client never computes permissions or touches raw
      storage itself. */
   async function callMutation(action, payload) {
+    busyRef.current = true;
     setBusy(true);
     setError("");
     try {
@@ -296,6 +324,7 @@ export default function DragonsApp() {
       setError(e.message || "Une erreur est survenue. Réessaie.");
       return false;
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -328,7 +357,7 @@ export default function DragonsApp() {
         /* ignore storage errors */
       }
       setSession({ username: res.username, playerId: res.playerId, role: res.role });
-      setScreen(isStaffRole(res.role) ? "composition" : "player");
+      setScreen(homeScreen(res.role));
     } catch (e) {
       setError(e.message || "Une erreur est survenue. Réessaie.");
     } finally {
@@ -349,7 +378,7 @@ export default function DragonsApp() {
         /* ignore storage errors */
       }
       setSession({ username: res.username, playerId: res.playerId, role: res.role });
-      setScreen(isStaffRole(res.role) ? "composition" : "player");
+      setScreen(homeScreen(res.role));
     } catch (e) {
       setError(e.message || "Une erreur est survenue. Réessaie.");
     } finally {
@@ -489,6 +518,27 @@ export default function DragonsApp() {
   /* ---------------- Derived ---------------- */
 
 
+  // Mise à jour automatique : si une nouvelle version est en ligne (onglet resté ouvert,
+  // appli installée sur l'écran d'accueil…), on recharge la page une fois.
+  useEffect(() => {
+    let stop = false;
+    async function check() {
+      try {
+        const txt = await (await fetch("/version.js?t=" + Date.now(), { cache: "no-store" })).text();
+        const m = /DRAGONS_VERSION\s*=\s*"([^"]+)"/.exec(txt);
+        if (!stop && m && m[1] !== APP_VERSION) {
+          const k = "dragons-reloaded-" + m[1];
+          if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, "1"); window.location.reload(); }
+        }
+      } catch (e) { /* hors ligne : on réessaiera */ }
+    }
+    check();
+    const onVis = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVis);
+    const iv = setInterval(check, 10 * 60 * 1000);
+    return () => { stop = true; document.removeEventListener("visibilitychange", onVis); clearInterval(iv); };
+  }, []);
+
   const me = useMemo(() => {
     if (!state || !session) return null;
     return state.roster.find((p) => p.id === session.playerId) || null;
@@ -578,15 +628,24 @@ export default function DragonsApp() {
                 <a className="tsw" href="/match/" style={{ textDecoration: "none" }}>
                   Feuille de match
                 </a>
+                <a className="tsw" href="/scout/" style={{ textDecoration: "none" }}>
+                  Adversaires
+                </a>
               </div>
             ) : (
               <div className="tab-switch">
+                {session.role === "scorer" ? (
+                  <a className="tsw" href="/match/" style={{ textDecoration: "none" }}>
+                    Feuille de match &amp; adversaires
+                  </a>
+                ) : (
                 <button
                   className={screen === "player" ? "tsw active" : "tsw"}
                   onClick={() => setScreen("player")}
                 >
                   Ma présence
                 </button>
+                )}
                 <button
                   className={screen === "composition" ? "tsw active" : "tsw"}
                   onClick={() => setScreen("composition")}
@@ -620,7 +679,7 @@ export default function DragonsApp() {
               </div>
             )}
             <span className="who">
-              {me ? `${me.prenom} ${me.nom}` : session.username}
+              {me ? `${me.prenom} ${me.nom}` : session.username}{session.role === "scorer" ? " · scoreuse" : ""}
             </span>
             <button className="btn-ghost" onClick={doLogout}>
               Déconnexion
@@ -708,6 +767,7 @@ export default function DragonsApp() {
             onResetPassword={(username, newPassword) => doResetPassword(username, newPassword)}
             onDeleteAccount={(username) => doDeleteAccount(username)}
             onSetAccountRole={(username, role) => doSetAccountRole(username, role)}
+            onCreateAccount={(data) => callMutation("createAccount", data)}
             onRenameAccount={(oldU, newU) => doRenameAccount(oldU, newU)}
             onDeletePlayer={(playerId) => deletePlayer(playerId)}
             onUpdatePlayerField={(playerId, field, value) => updatePlayerField(playerId, field, value)}
@@ -723,11 +783,12 @@ export default function DragonsApp() {
         )}
 
         {session && screen === "composition" && (
-          <LineupView state={state} isStaff={isStaffRole(session.role)} token={authToken} />
+          <LineupView state={state} isStaff={isStaffRole(session.role)} scorer={session.role === "scorer"} token={authToken} />
         )}
 
         {session && screen === "matches" && isStaffRole(session.role) && (
           <MatchesView
+            token={authToken}
             matches={state.matches}
             onAddSeason={addSeason}
             onSetCurrentSeason={setCurrentSeason}
@@ -744,6 +805,7 @@ export default function DragonsApp() {
         Données partagées entre les membres connectés à cette application. Ce n'est pas un
         système d'authentification de niveau professionnel — évite de réutiliser un mot de
         passe important.
+        <div style={{ marginTop: 4, opacity: 0.7 }}>Version {APP_VERSION}</div>
       </footer>
     </div>
     </SeasonContext.Provider>
@@ -1099,6 +1161,43 @@ function PlayerView({ player, matches, presence, positions, onSetPresence, onSet
 /* Coach view                                                          */
 /* ------------------------------------------------------------------ */
 
+/* Création d'un compte scoreuse (non lié à un joueur) par le propriétaire. */
+function CreateAccountForm({ onCreate, onDone, busy }) {
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  if (!open) {
+    return (
+      <button className="btn-primary small" style={{ marginBottom: 12 }} onClick={() => setOpen(true)}>
+        + Créer un compte scoreuse
+      </button>
+    );
+  }
+  async function submit() {
+    const ok = await onCreate({ username: username.trim().toLowerCase(), password, label: label.trim(), newRole: "scorer" });
+    if (ok) {
+      onDone(`Compte "${username.trim().toLowerCase()}" créé (scoreuse). Transmets l'identifiant et le mot de passe à la personne.`);
+      setOpen(false); setLabel(""); setUsername(""); setPassword("");
+    }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <h3 style={{ marginTop: 0 }}>Nouveau compte scoreuse</h3>
+      <div className="hint" style={{ marginBottom: 8 }}>
+        Lecture de la feuille de match en direct (noms complets), compos publiées et saisie du line-up adverse. Aucune modification possible ailleurs.
+      </div>
+      <div className="reset-form" style={{ flexWrap: "wrap" }}>
+        <input placeholder="Nom affiché (ex. Marie)" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input placeholder="Identifiant (ex. marie.score)" value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" />
+        <input placeholder="Mot de passe (6 caractères min.)" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button className="btn-primary small" disabled={busy || !username.trim() || password.length < 6} onClick={submit}>Créer</button>
+        <button className="btn-ghost small" onClick={() => setOpen(false)}>Annuler</button>
+      </div>
+    </div>
+  );
+}
+
 function CoachView({
   state,
   actingUser,
@@ -1106,6 +1205,7 @@ function CoachView({
   onResetPassword,
   onDeleteAccount,
   onSetAccountRole,
+  onCreateAccount,
   onRenameAccount,
   onDeletePlayer,
   onUpdatePlayerField,
@@ -1330,7 +1430,7 @@ function CoachView({
   const accountRows = Object.entries(state.accounts)
     .map(([username, acc]) => {
       const player = state.roster.find((p) => p.id === acc.playerId);
-      return { username, ...acc, playerName: player ? `${player.prenom} ${player.nom}` : acc.playerId };
+      return { username, ...acc, playerName: player ? `${player.prenom} ${player.nom}` : acc.label || (acc.role === "scorer" ? "Scoreuse" : acc.playerId || username) };
     })
     .filter((acc) =>
       accountSearch.trim() === "" ||
@@ -1538,6 +1638,7 @@ function CoachView({
       <div className="card">
         <h2>Comptes</h2>
         {resetMsg && <div className="ok-msg">{resetMsg}</div>}
+        {currentRole === "owner" && <CreateAccountForm onCreate={onCreateAccount} onDone={setResetMsg} busy={busy} />}
 
         <input
           className="search"
@@ -1588,7 +1689,7 @@ function CoachView({
               />
               <div className="account-info">
                 <span className="account-name">{acc.playerName}</span>
-                <span className="account-user">@{acc.username}{acc.role === "owner" ? " · propriétaire" : acc.role === "coach" ? " · staff" : ""}</span>
+                <span className="account-user">@{acc.username}{acc.role === "owner" ? " · propriétaire" : acc.role === "coach" ? " · staff" : acc.role === "scorer" ? " · scoreuse" : ""}</span>
               </div>
 
               {editTarget === acc.username ? (
@@ -1600,6 +1701,7 @@ function CoachView({
                   />
                   <select value={editRole} onChange={(e) => setEditRole(e.target.value)}>
                     <option value="player">Joueur</option>
+                    <option value="scorer">Scoreuse</option>
                     {currentRole === "owner" && <option value="coach">Staff</option>}
                     {currentRole === "owner" && <option value="owner">Propriétaire</option>}
                   </select>
@@ -1955,7 +2057,7 @@ const COMPO_KEEP_DAYS = 3; // un match passé reste 3 jours dans Composition, en
 
 /* Composition — lecture seule. Le staff la prépare dans « Compo & changements »
    puis l'envoie ici ; les joueurs la voient à partir de 2 jours avant le match. */
-function LineupView({ state, isStaff, token }) {
+function LineupView({ state, isStaff, token, scorer }) {
   const [images, setImages] = useState({}); // matchId:imageAt -> dataURL | "none"
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const list = useMemo(() => {
@@ -1971,11 +2073,11 @@ function LineupView({ state, isStaff, token }) {
   const curImageAt = cur ? getLineup(state, cur.m.id).imageAt : null;
   const imgKey = cur && curImageAt ? cur.m.id + ":" + curImageAt : null;
   useEffect(() => {
-    if (!imgKey || images[imgKey]) return;
+    if (!imgKey || (images[imgKey] && images[imgKey] !== "error")) return;
     const id = cur.m.id;
     callApi({ action: "getLineupImage", token, matchId: id })
       .then((r) => setImages((x) => ({ ...x, [imgKey]: r.image || "none" })))
-      .catch(() => setImages((x) => ({ ...x, [imgKey]: "none" })));
+      .catch(() => setImages((x) => ({ ...x, [imgKey]: "error" })));
   }, [imgKey]);
 
   if (!cur) {
@@ -1985,7 +2087,7 @@ function LineupView({ state, isStaff, token }) {
         <div className="hint">
           {isStaff
             ? "Aucun match à venir. Ajoute les prochains matchs dans l'onglet Matchs."
-            : "La composition du prochain match apparaîtra ici 2 jours avant la rencontre."}
+            : scorer ? "La composition apparaîtra ici dès que le coach l'aura envoyée." : "La composition du prochain match apparaîtra ici 2 jours avant la rencontre."}
         </div>
       </div>
     );
@@ -2039,7 +2141,7 @@ function LineupView({ state, isStaff, token }) {
         )}
       </div>
 
-      {imgKey && img && img !== "none" ? (
+      {imgKey && img && img !== "none" && img !== "error" ? (
         <div className="card">
           <img src={img} alt={`Composition ${m.label}`} style={{ display: "block", width: "100%", borderRadius: 10 }} />
           <button className="btn-primary small" style={{ marginTop: 12 }} onClick={saveImg}>Enregistrer / partager l'image</button>
@@ -2048,8 +2150,15 @@ function LineupView({ state, isStaff, token }) {
         <div className="card"><div className="hint">Chargement de la composition…</div></div>
       ) : !has ? (
         <div className="card"><div className="hint">Pas encore de composition pour ce match.</div></div>
+      ) : !isStaff ? (
+        <div className="card"><div className="hint">
+          {img === "error" ? "Pas de réseau : l'image de la composition n'a pas pu être chargée. Réessaie dans un instant." : "La composition arrive bientôt : le coach doit encore l'envoyer depuis Compo & changements."}
+        </div></div>
       ) : (
         <>
+          <div className="card" style={{ borderColor: "var(--gold)" }}>
+            <div className="hint">⚠ Pas d'image pour cette compo : les joueurs ne voient rien tant qu'elle n'est pas renvoyée depuis <a href="/compo/" style={{ color: "var(--gold)" }}>Compo &amp; changements</a> (« Envoyer la compo »).</div>
+          </div>
           <div className="card">
             <h2>Défense</h2>
             <div className="field-wrap">
@@ -2130,12 +2239,158 @@ function SeasonManager({ onAddSeason, onSetCurrentSeason, busy }) {
   );
 }
 
-function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReorderMatches, onAddSeason, onSetCurrentSeason, busy }) {
+/* ---------------- Équipes adverses & logos ---------------- */
+const normT = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+function findTeam(teams, name) {
+  const n = normT(name);
+  if (!n) return null;
+  for (const t of teams || []) {
+    const keys = [t.name, ...(t.aliases || [])].map(normT).filter(Boolean);
+    if (keys.some((k) => n === k || n.includes(k) || k.includes(n))) return t;
+  }
+  return null;
+}
+function teamInitials(name) {
+  const w = String(name || "?").split(/\s+/).filter((x) => x && !/^(de|du|des|la|le|les|d'|l')$/i.test(x));
+  return ((w[0] || "?")[0] + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase();
+}
+function TeamBubble({ team, name, size = 44 }) {
+  const st = { width: size, height: size, borderRadius: "50%", background: "#e7efea", display: "inline-flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flex: "none", boxShadow: `0 0 0 2px ${(team && team.color) || "#9aada2"}` };
+  return (
+    <span style={st}>
+      {team && team.logo
+        ? <img src={team.logo} alt="" style={{ width: "84%", height: "84%", objectFit: "contain" }} />
+        : <b style={{ color: "#0e1511", fontSize: Math.round(size * 0.36) }}>{teamInitials((team && team.name) || name)}</b>}
+    </span>
+  );
+}
+function useTeams() {
+  const [teams, setTeams] = useState([]);
+  useEffect(() => {
+    fetch("/api/teams", { cache: "no-store" }).then((r) => r.json()).then((d) => setTeams(d.teams || [])).catch(() => {});
+  }, []);
+  return [teams, setTeams];
+}
+/* Image choisie → carré 256 px (PNG transparent), assez léger pour être stocké */
+function imageToLogo(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("Lecture impossible"));
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Image illisible"));
+      img.onload = () => {
+        const S = 256, c = document.createElement("canvas");
+        c.width = S; c.height = S;
+        const x = c.getContext("2d"), k = Math.min(S / img.width, S / img.height);
+        const w = img.width * k, h = img.height * k;
+        x.imageSmoothingQuality = "high";
+        x.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+        let d = c.toDataURL("image/png");
+        if (d.length > 350 * 1024) d = c.toDataURL("image/webp", 0.9);
+        resolve(d);
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+function TeamEditor({ team, token, onSaved, onDeleted, onClose }) {
+  const [name, setName] = useState(team.name || "");
+  const [aliases, setAliases] = useState((team.aliases || []).join(", "));
+  const [color, setColor] = useState(team.color || "#9aada2");
+  const [logoData, setLogoData] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [working, setWorking] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  async function pick(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try { setLogoData(await imageToLogo(f)); setMsg(""); } catch (err) { setMsg(err.message); }
+  }
+  async function save() {
+    setWorking(true); setMsg("");
+    try {
+      let r = await callApi({ action: "saveTeam", token, team: { id: team.id, name, aliases, color } });
+      const saved = r.teams.find((x) => normT(x.name) === normT(name)) || r.teams[r.teams.length - 1];
+      if (logoData && saved) r = await callApi({ action: "setTeamLogo", token, id: saved.id, dataUrl: logoData });
+      onSaved(r.teams);
+    } catch (err) { setMsg(err.message); }
+    setWorking(false);
+  }
+  async function del() {
+    setWorking(true);
+    try { const r = await callApi({ action: "deleteTeam", token, id: team.id }); onDeleted(r.teams); } catch (err) { setMsg(err.message); }
+    setWorking(false);
+  }
+  const preview = { ...team, name, color, logo: logoData || team.logo };
+  return (
+    <div className="team-editor">
+      <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 12 }}>
+        <TeamBubble team={preview} name={name} size={72} />
+        <label className="btn-ghost small" style={{ cursor: "pointer" }}>
+          {preview.logo ? "Changer le logo" : "Ajouter un logo"}
+          <input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+        </label>
+      </div>
+      <label className="field"><span>Nom de l'équipe</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex : Lions de Lille" /></label>
+      <label className="field"><span>Autres noms (séparés par des virgules) — ville, surnom… tels qu'ils apparaissent dans le calendrier</span><input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="ex : Lille, Lions" /></label>
+      <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><span>Couleur du club</span><input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 52, height: 34, padding: 2 }} /></label>
+      {msg && <div className="hint" style={{ color: "var(--bad)" }}>{msg}</div>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+        <button className="btn-primary small" onClick={save} disabled={working || !name.trim()}>{working ? "…" : "Enregistrer"}</button>
+        <button className="btn-ghost small" onClick={onClose} disabled={working}>Annuler</button>
+        {team.id && (confirmDel
+          ? <button className="btn-danger small" onClick={del} disabled={working}>Confirmer la suppression</button>
+          : <button className="btn-danger small" onClick={() => setConfirmDel(true)} disabled={working}>Supprimer l'équipe</button>)}
+      </div>
+    </div>
+  );
+}
+function TeamsManager({ teams, setTeams, token, editing, setEditing }) {
+  const sorted = [...teams].sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  return (
+    <div className="card" id="teams-manager">
+      <h2>Équipes adverses &amp; logos</h2>
+      <div className="hint" style={{ marginBottom: 12, marginTop: 0 }}>
+        Crée une équipe, dépose son logo : il s'affiche tout seul sur le live, l'image de fin de match et la page Adversaires
+        dès que le nom (ou un de ses autres noms) apparaît dans le calendrier.
+      </div>
+      <div className="teams-grid">
+        {sorted.map((tm) => (
+          <button key={tm.id} className={"team-chip" + (editing && editing.id === tm.id ? " active" : "")} onClick={() => setEditing(tm)}>
+            <TeamBubble team={tm} size={40} />
+            <span><b>{tm.name}</b>{tm.aliases && tm.aliases.length ? <small>{tm.aliases.join(", ")}</small> : null}</span>
+          </button>
+        ))}
+        <button className="team-chip add" onClick={() => setEditing({ name: "", aliases: [], color: "#9aada2" })}>＋ Nouvelle équipe</button>
+      </div>
+      {editing && (
+        <TeamEditor
+          key={editing.id || "new:" + editing.name}
+          team={editing}
+          token={token}
+          onSaved={(list) => { setTeams(list); setEditing(null); }}
+          onDeleted={(list) => { setTeams(list); setEditing(null); }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MatchesView({ token, matches, onUpdateField, onAddMatch, onDeleteMatch, onReorderMatches, onAddSeason, onSetCurrentSeason, busy }) {
   const seasonCtx = useContext(SeasonContext);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // matchId pending delete confirm
   const [seasonFilter, setSeasonFilter] = useState(null);
 
   const seasons = useSeasonList(matches);
+  const [teams, setTeams] = useTeams();
+  const [editingTeam, setEditingTeam] = useState(null);
+  function openTeam(tm) {
+    setEditingTeam(tm);
+    setTimeout(() => { const el = document.getElementById("teams-manager"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 50);
+  }
 
   const effectiveFilter = seasonFilter ?? (seasons.current || "all");
 
@@ -2186,6 +2441,8 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
   return (
     <div>
       <SeasonManager onAddSeason={onAddSeason} onSetCurrentSeason={onSetCurrentSeason} busy={busy} />
+      <TeamsManager teams={teams} setTeams={setTeams} token={token} editing={editingTeam} setEditing={setEditingTeam} />
+      <datalist id="teams-datalist">{teams.map((tm) => <option key={tm.id} value={tm.name} />)}</datalist>
       <div className="card">
         <h2>Matchs de la saison</h2>
         <div className="hint" style={{ marginBottom: 14 }}>
@@ -2307,6 +2564,15 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
                   />
                 </label>
                 <label className="field">
+                  <span>Heure</span>
+                  <DebouncedInput
+                    value={m.time || ""}
+                    onCommit={(v) => onUpdateField(m.id, "time", v)}
+                    disabled={busy}
+                    placeholder="ex: 14h"
+                  />
+                </label>
+                <label className="field">
                   <span>Saison</span>
                   <select
                     value={m.season || seasonCtx.current}
@@ -2319,13 +2585,25 @@ function MatchesView({ matches, onUpdateField, onAddMatch, onDeleteMatch, onReor
               </div>
               <label className="field">
                 <span>Équipe rencontrée</span>
-                <DebouncedInput
-                  value={m.opponent}
-                  onCommit={(v) => onUpdateField(m.id, "opponent", v)}
-                  disabled={busy}
-                  placeholder="ex: Compiègne"
-                />
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  {m.opponent ? <TeamBubble team={findTeam(teams, m.opponent)} name={m.opponent} size={38} /> : null}
+                  <DebouncedInput
+                    value={m.opponent}
+                    onCommit={(v) => onUpdateField(m.id, "opponent", v)}
+                    disabled={busy}
+                    placeholder="ex: Compiègne"
+                    list="teams-datalist"
+                    autoComplete="off"
+                    style={{ flex: 1 }}
+                  />
+                </div>
               </label>
+              {m.opponent && !findTeam(teams, m.opponent) && (
+                <div className="hint" style={{ marginTop: -6, marginBottom: 10 }}>
+                  Équipe inconnue, pas de logo.{" "}
+                  <button className="link-btn" onClick={() => openTeam({ name: m.opponent, aliases: [], color: "#9aada2" })}>＋ Créer « {m.opponent} » et ajouter son logo</button>
+                </div>
+              )}
               {(() => {
                 const innings = getInnings(m);
                 const dTotal = inningsTotal(innings.dragons);
@@ -3173,6 +3451,15 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0e1511; }
 .cell-status { background: none; border: none; padding: 0; cursor: pointer; }
 
 .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.team-chip { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; border-radius: 12px; border: 1.5px solid var(--line, #2a3a31); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.team-chip span { display: flex; flex-direction: column; min-width: 0; }
+.team-chip b { font-size: 14px; }
+.team-chip small { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-chip.active { border-color: var(--accent, #3fae74); }
+.team-chip.add { justify-content: center; border-style: dashed; font-weight: 700; color: var(--muted); min-height: 58px; }
+.team-editor { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line, #2a3a31); }
+.link-btn { background: none; border: none; padding: 0; color: var(--accent, #3fae74); font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; }
 
 .audit-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
 .audit-row {

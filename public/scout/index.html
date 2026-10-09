@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E1511">
+<title>Dragons · Adversaires</title>
+<style>
+:root{--bg:#0E1511;--surface:#17211B;--ink:#E7EFEA;--muted:#9AADA2;--line:#2A3A31;--accent:#3FAE74;--accent-ink:#06130C;--accent-soft:#1B3527;--out:#F2665A;--warn:#F2B632;--warn-soft:#3A2E10;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{max-width:980px;margin:0 auto;padding:12px 16px 60px}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:10px;width:100%}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.top h1{font:800 24px system-ui;margin:0;text-transform:uppercase;letter-spacing:.02em}
+.btn{min-height:42px;padding:0 14px;border-radius:10px;background:var(--surface);border:1.5px solid var(--line);font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:14px 0 8px}
+.muted{color:var(--muted)}
+.teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.team{display:flex;gap:12px;align-items:center;text-align:left;width:100%}
+.team b{font-size:17px}
+.players{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.pl.warn{border-color:var(--warn)}
+.pl h3{margin:0;font-size:18px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{padding:6px 10px;border-radius:999px;border:1.5px solid var(--line);font-size:13px;font-weight:600}
+.chip.on{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.stat{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;margin-top:8px}
+.stat span{background:var(--bg);border-radius:6px;padding:3px 7px}
+.note{border-left:3px solid var(--line);padding:4px 8px;margin:6px 0;font-size:14px;display:flex;justify-content:space-between;gap:8px}
+.x{color:var(--out);font-weight:800}
+.spr{margin-top:8px}.spr summary{cursor:pointer;font-weight:700;font-size:14px;color:var(--accent);padding:4px 0}
+.wbtn{font-size:22px;line-height:1;padding:4px 8px;border-radius:8px;border:1.5px solid var(--line)}
+.wbtn.on{background:var(--warn-soft);border-color:var(--warn)}
+.empty{text-align:center;padding:30px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="/logos/logos.js"></script>
+<script src="/match/spray.js"></script>
+<script>
+/* Fiches scouting des équipes adverses : réservé au coaching staff.
+   Les joueurs viennent des line-ups adverses saisis par la scoreuse ;
+   les stats « contre nous » viennent des feuilles de match. */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const token=()=>{try{return localStorage.getItem('dragons-session-token')}catch(e){return null}};
+const slugT=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const TAGS=['Grosse frappe','Frappe au sol','Fly balls','Tire à gauche','Tire à droite','Très rapide','Vole dès qu’il peut','Bunt','Patient (beaucoup de BB)','Attaque le 1er lancer','Swing à tout','Bras fort','Lanceur rapide','Changeup','Courbe','Fatigue vite'];
+async function api(p){const r=await fetch('/.netlify/functions/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...p,token:token()})});let d={};try{d=await r.json()}catch(e){}if(!r.ok){const e=new Error(d.error||'Erreur réseau');e.status=r.status;throw e}return d}
+let teams={},scout={},cur=null,state='loading',err='',open=new Set();
+const fd=d=>{try{return new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})}catch(e){return d}};
+function toast(t){let el=document.querySelector('.toast');if(!el){el=document.createElement('div');el.className='toast';document.body.appendChild(el)}el.textContent=t;clearTimeout(el._t);el._t=setTimeout(()=>el.remove(),1800)}
+async function load(){
+  try{
+    const s=await api({action:'getState'});
+    if(!s.session||!['coach','owner'].includes(s.session.role)){state='denied';return render()}
+    const [ol,sh,sc]=await Promise.all([api({action:'getOppLineups'}),api({action:'getScoresheets'}),api({action:'listScout'})]);
+    teams={};
+    const T=(name)=>{const k=slugT(name);return teams[k]||(teams[k]={slug:k,name,players:{},games:[]})};
+    (ol.lineups||[]).forEach(l=>{const t=T(l.team);const sheet=(sh.sheets||[]).find(x=>x.id===l.sheetId);
+      if(!t.games.some(g=>g.id===l.sheetId))t.games.push({id:l.sheetId,date:l.date||(sheet&&sheet.date)||''});
+      [...(l.order||[]),l.pitcher,...(l.bench||[])].filter(Boolean).forEach(p=>{
+        const key=t.slug+':'+(slugT((p.prenom||'')+' '+(p.nom||''))||'n'+p.num);
+        const cur=t.players[key]||(t.players[key]={key,num:p.num,prenom:p.prenom,nom:p.nom,pos:new Set(),dates:new Set(),spray:[],st:{pa:0,h:0,d:0,t:0,hr:0,bb:0,hbp:0,k:0,out:0}});
+        cur.num=p.num||cur.num;if(p.pos)cur.pos.add(p.pos);if(l.date)cur.dates.add(l.date)})});
+    // stats contre nous, à partir des actions de défense marquées avec le batteur adverse
+    (sh.sheets||[]).forEach(m=>(m.events||[]).forEach(e=>{
+      if(!e.obk)return;const t=teams[e.obk.split(':')[0]];const p=t&&t.players[e.obk];if(!p)return;const st=p.st;
+      if(e.k==='DHIT'){st.pa++;st.h++;if(e.v==='2B')st.d++;if(e.v==='3B')st.t++;if(e.v==='HR')st.hr++}
+      else if(e.k==='DOUT'){st.pa++;st.out++}
+      else if(e.k==='DP'){st.pa++;if(e.kind==='BB')st.bb++;else if(e.kind==='HBP')st.hbp++;else{st.k++;}}
+    }));
+    // carte des frappes : où ils frappent contre nous (balles en jeu placées sur la feuille de match)
+    const sheetTeam={};(ol.lineups||[]).forEach(l=>{sheetTeam[l.sheetId]=slugT(l.team)});
+    (sh.sheets||[]).forEach(m=>(m.events||[]).forEach(e=>{
+      if(!e.loc||!['DHIT','DOUT'].includes(e.k))return;
+      const tk=e.obk?e.obk.split(':')[0]:(sheetTeam[m.id]||slugT(m.opp));const t=teams[tk]||T(m.opp);
+      const pt={loc:e.loc,res:e.k==='DHIT'?e.v:'OUT',bt:e.bt,title:(m.date||'')+' · '+(e.k==='DHIT'?e.v:'Out')};
+      (t.spray=t.spray||[]).push(pt);const p=e.obk&&t.players[e.obk];if(p)p.spray.push(pt)}));
+    scout={};(sc.teams||[]).forEach(x=>{scout[x.slug]=x;if(!teams[x.slug])teams[x.slug]={slug:x.slug,name:x.team,players:{},games:[]}});
+    state='ok';
+  }catch(e){state='error';err=e.message}
+  render();
+}
+function render(){
+  const app=$('app');
+  if(state==='loading'){app.innerHTML='<div class="empty muted">Chargement…</div>';return}
+  if(state==='denied'){app.innerHTML=`<div class="card empty"><h2>Réservé au coaching staff</h2><a class="btn primary" href="/">Ouvrir l’appli Dragons</a></div>`;return}
+  if(state==='error'){app.innerHTML=`<div class="card empty"><h2>Erreur</h2><p class="muted">${esc(err)}</p><a class="btn" href="/">Retour</a></div>`;return}
+  if(!cur){
+    const list=Object.values(teams).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+    app.innerHTML=`<div class="top"><a class="btn" href="/">‹ Appli</a><h1>Adversaires</h1><span></span></div>
+    <p class="muted" style="margin-top:0">Chaque line-up adverse saisi par la scoreuse crée ou complète la fiche de l’équipe. Ajoute tes notes après le match : elles reviennent pendant la rencontre suivante, au moment où le joueur est au bâton.</p>
+    ${list.length?`<div class="teams">${list.map(t=>{const sc=scout[t.slug]||{players:{}},w=Object.values(sc.players||{}).filter(p=>p.warn).length;
+      return `<button class="card team" data-team="${t.slug}">${DragonsLogos.badge(t.name,48)}<div><b>${esc(t.name)}</b><div class="muted" style="font-size:13px">${Object.keys(t.players).length} joueurs · ${t.games.length} match${t.games.length>1?'s':''}${w?` · <span style="color:var(--warn)">${w} ⚠</span>`:''}</div></div></button>`}).join('')}</div>`
+    :`<div class="card empty muted">Aucun adversaire pour l’instant. Le line-up adverse se saisit dans la feuille de match, onglet « Adverse ».</div>`}`;
+    return;
+  }
+  const t=teams[cur],sc=scout[cur]||{players:{}};
+  const ps=Object.values(t.players).sort((a,b)=>((sc.players[b.key]||{}).warn?1:0)-((sc.players[a.key]||{}).warn?1:0)||(+a.num||99)-(+b.num||99));
+  app.innerHTML=`<div class="top"><button class="btn" data-back="1">‹ Équipes</button><h1 style="display:flex;align-items:center;gap:10px">${DragonsLogos.badge(t.name,40)}${esc(t.name)}</h1><span></span></div>
+  <div class="muted" style="font-size:14px">${t.games.map(g=>g.date).filter(Boolean).sort().map(fd).join(' · ')||''}</div>
+  ${(t.spray||[]).length?`<div class="label">Où ils frappent contre nous</div><div class="card">${DragonsSpray.svg(t.spray,{max:440})}${DragonsSpray.legend()}${DragonsSpray.summary(t.spray)}</div>`:''}
+  <div class="label">Joueurs</div>
+  <div class="players">${ps.map(p=>{const s=sc.players[p.key]||{tags:[],notes:[],warn:false},st=p.st;
+    return `<div class="card pl ${s.warn?'warn':''}" data-key="${esc(p.key)}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><h3>${p.num?'#'+esc(p.num)+' ':''}${esc(p.prenom||'')} ${esc((p.nom||'').toUpperCase())}</h3><div class="muted" style="font-size:13px">${[...p.pos].join(', ')||'—'}</div></div>
+      <button class="wbtn ${s.warn?'on':''}" data-warn="1" title="À surveiller">⚠</button></div>
+      ${st.pa?`<div class="stat"><span>Contre nous : ${st.h} H / ${st.pa-st.bb-st.hbp} AB</span>${st.hr?`<span>${st.hr} HR</span>`:''}${st.d?`<span>${st.d} 2B</span>`:''}${st.bb?`<span>${st.bb} BB</span>`:''}${st.k?`<span>${st.k} K</span>`:''}</div>`:''}
+      ${p.spray.length?`<details class="spr"><summary>Carte des frappes (${p.spray.length})</summary>${DragonsSpray.svg(p.spray,{max:300,r:7})}${DragonsSpray.summary(p.spray)}</details>`:''}
+      <div class="chips">${(open.has(p.key)?TAGS.concat((s.tags||[]).filter(x=>!TAGS.includes(x))):(s.tags||[])).map(x=>`<button class="chip ${(s.tags||[]).includes(x)?'on':''}" data-tag="${esc(x)}">${esc(x)}</button>`).join('')}<button class="chip" data-more="1" style="border-style:dashed">${open.has(p.key)?'Fermer':'+ Tags'}</button></div>
+      ${(s.notes||[]).map((n,i)=>`<div class="note"><span>« ${esc(n.txt)} » <span class="muted">— ${esc(fd(n.d))}${n.by?' · '+esc(n.by):''}</span></span><button class="x" data-del="${i}" aria-label="Supprimer la note">×</button></div>`).join('')}
+      <div style="display:flex;gap:6px;margin-top:8px"><input placeholder="Ajouter une note…" data-note="1"><button class="btn primary" data-addnote="1">+</button></div>
+    </div>`}).join('')||'<div class="card muted">Pas encore de joueurs.</div>'}</div>`;
+}
+async function saveScout(key,patch){
+  const t=teams[cur],p=t.players[key];
+  try{const r=await api({action:'saveScout',team:t.name,playerKey:key,info:p?{num:p.num,prenom:p.prenom,nom:p.nom}:undefined,...patch});scout[cur]=r.scout;render()}
+  catch(e){toast(e.message)}
+}
+document.addEventListener('click',e=>{
+  const tb=e.target.closest('[data-team]');if(tb){cur=tb.dataset.team;render();scrollTo(0,0);return}
+  if(e.target.closest('[data-back]')){cur=null;render();return}
+  const card=e.target.closest('[data-key]');if(!card)return;const key=card.dataset.key,s=(scout[cur]||{players:{}}).players[key]||{tags:[],warn:false};
+  if(e.target.closest('[data-more]')){open.has(key)?open.delete(key):open.add(key);return render()}
+  if(e.target.closest('[data-warn]'))return saveScout(key,{warn:!s.warn});
+  const tg=e.target.closest('[data-tag]');if(tg){const x=tg.dataset.tag,tags=(s.tags||[]).includes(x)?s.tags.filter(y=>y!==x):[...(s.tags||[]),x];return saveScout(key,{tags})}
+  const dl=e.target.closest('[data-del]');if(dl&&confirm('Supprimer cette note ?'))return saveScout(key,{deleteNote:+dl.dataset.del});
+  if(e.target.closest('[data-addnote]')){const inp=card.querySelector('[data-note]');const v=inp.value.trim();if(v)saveScout(key,{note:v})}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('[data-note]')){const card=e.target.closest('[data-key]');const v=e.target.value.trim();if(v)saveScout(card.dataset.key,{note:v})}});
+load();
+window.DragonsLogos&&DragonsLogos.ready.then(()=>{if(state==='ok')render()});
+</script>
+</body>
+</html>

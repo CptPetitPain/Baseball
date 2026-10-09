@@ -317,7 +317,7 @@ function after(){
   S.subs.filter(s => (s.kind==='rep' && s.out && s.in) || (s.kind==='pos' && s.player && s.to)).forEach(s => {
     if(s.kind==='rep'){
       // Réentrée : un joueur remplacé ne revient pas (règle 5.10)
-      if(gone.has(s.in)) notes.push(`⚠ Interdit : ${s.in} est déjà sorti, pas de réentrée (règle 5.10).`);
+      if(gone.has(s.in)) notes.push(`⚠ ${s.in} est déjà sorti : réentrée interdite en match de saison (règle 5.10), autorisée en amical.`);
       gone.add(s.out);
       if(s.out === dhH) dhH = s.in;
       const k = keyOf(s.out), j = keyOf(s.in), bi = O.indexOf(s.out);
@@ -775,10 +775,12 @@ async function api(payload){
 }
 function presOf(n){ const id = CLUB.byName[n], m = $('calMatch') && $('calMatch').value; return (id && m && ((CLUB.presence||{})[id]||{})[m]) || ''; }
 function clubNames(roster){
-  const cnt = {}; roster.forEach(p => { const k=(p.prenom||'').trim(); if(k) cnt[k]=(cnt[k]||0)+1; });
+  // homonymes repérés sans tenir compte des accents ni des majuscules (Francois / François)
+  const key = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const cnt = {}; roster.forEach(p => { const k=key((p.prenom||'').trim()); if(k) cnt[k]=(cnt[k]||0)+1; });
   const byName = {};
   roster.forEach(p => { const pr=(p.prenom||'').trim(), no=(p.nom||'').trim();
-    let n = pr || no || p.id; if(pr && cnt[pr]>1 && no) n = pr+' '+no[0]+'.'; byName[n] = p.id; });
+    let n = pr || no || p.id; if(pr && cnt[key(pr)]>1 && no) n = pr+' '+no[0]+'.'; byName[n] = p.id; });
   return byName;
 }
 function fillCal(){
@@ -791,9 +793,26 @@ $('sendBtn').onclick = async () => {
   const matchId = $('calMatch').value;
   if(!matchId){ toast('Choisis d\'abord un match du calendrier'); return; }
   if(view==='apres'){ toast('Repasse sur « Avant changements » pour envoyer la compo de départ'); return; }
-  const unknown = [...Object.values(S.field), ...S.order].filter(n => n && !CLUB.byName[n]);
+  const unknown = [...new Set([...Object.values(S.field), ...S.order, ...filledSubs().flatMap(s => [s.in, s.out, s.player])].filter(n => n && !CLUB.byName[n]))];
   const btn = $('sendBtn'); btn.disabled = true; btn.textContent = 'Envoi…';
   try{
+    // Joueurs créés ici mais pas encore dans l'effectif du club : on les ajoute pour qu'ils
+    // apparaissent partout (Composition des joueurs, feuille de match…)
+    const created = [];
+    const nk = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().split(/\s+/)[0];
+    const ambiguous = [];
+    for(const n of unknown){
+      // même prénom qu'un joueur du club (ex. Francois / François) : on ne crée pas de doublon
+      if(Object.keys(CLUB.byName).some(c => nk(c) === nk(n))){ ambiguous.push(n); continue; }
+      const [prenom, ...rest] = n.split(/\s+/), before = new Set(Object.values(CLUB.byName));
+      try{
+        const r = await api({action:'addPlayer', prenom, nom: rest.join(' ')});
+        const np = (r.state.roster || []).find(p => !before.has(p.id) && (p.prenom||'').trim() === prenom);
+        if(np){ CLUB.byName[n] = np.id; S.clubMap = CLUB.byName; S.extra = S.extra.filter(x => x !== n); created.push(n); }
+      }catch(e){}
+    }
+    if(created.length) save();
+    unknown.splice(0, unknown.length, ...unknown.filter(n => !CLUB.byName[n]));
     const defense = {};
     for(const [k, poste] of Object.entries(APP_POS)){ const id = CLUB.byName[S.field[k]]; if(id) defense[poste] = id; }
     const batting = S.order.slice(0,9).map(n => CLUB.byName[n] || '');
@@ -804,10 +823,12 @@ $('sendBtn').onclick = async () => {
     const keep = S.match;
     if(!S.match) S.match = [cm.label, cm.opponent ? 'vs ' + cm.opponent : '', cm.date].filter(Boolean).join(' · ');
     let image = null;
-    try{ image = (await drawSheet()).toDataURL('image/png'); }catch(e){}
+    try{ image = (await drawSheet()).toDataURL('image/png'); }catch(e){ console.error(e); }
+    if(!image) toast('Attention : l\'image de la compo n\'a pas pu être générée');
     S.match = keep;
     await api({action:'setLineup', matchId, defense, batting, dh, subs, image});
-    toast(unknown.length ? `Compo publiée (sans ${unknown.join(', ')} : pas dans l'effectif du club)` : 'Compo publiée dans l\'onglet Composition');
+    if(ambiguous.length){ alert(`À vérifier : ${ambiguous.join(', ')} ressemble à un joueur du club (même prénom). Remplace-le sur le terrain par le bon joueur de la liste (ex. « François W. »), puis renvoie la compo.`); }
+    toast(unknown.length ? `Compo publiée (sans ${unknown.join(', ')})` : created.length ? `Compo publiée · ${created.join(', ')} ajouté(s) à l'effectif du club` : 'Compo publiée dans l\'onglet Composition');
   }catch(e){ toast(e.message || 'Envoi impossible'); }
   btn.disabled = false; btn.textContent = 'Envoyer la compo';
 };

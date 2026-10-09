@@ -1,8 +1,8 @@
 /* Fait fonctionner la feuille de match sans réseau au bord du terrain.
    Seule la page elle-même est mise en cache ; les appels à l'API ne le
    sont jamais (les données passent par la file d'attente de la page). */
-const CACHE = "dragons-match-v9";
-const SHELL = ["/match/", "/match/scorecard.js", "/match/manifest.webmanifest", "/match/icon-192.png", "/match/icon-512.png"];
+const CACHE = "dragons-match-v2.6";
+const SHELL = ["/match/", "/match/scorecard.js","/match/spray.js","/logos/logos.js","/version.js", "/match/manifest.webmanifest", "/match/icon-192.png", "/match/icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

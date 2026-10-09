@@ -61,6 +61,23 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 .tabs button{font:inherit;font-size:13px;color:var(--ink);background:var(--card);border:1px solid #2a3a31;border-radius:999px;padding:6px 12px;cursor:pointer}
 .tabs button.on{background:var(--gold);color:#06130c;border-color:var(--gold)}
 .empty{text-align:center;padding:40px 16px;color:var(--muted)}
+/* Page d'attente : jour de match / prochain match */
+.wait{display:flex;flex-direction:column;gap:14px;text-align:center}
+.wtag{align-self:center;font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:6px 14px;border-radius:999px;background:#b8322a;color:#fff;animation:wpulse 1.6s ease-in-out infinite}
+.wtag.soft{background:#1b3527;color:#cfe9d9;animation:none}
+@keyframes wpulse{50%{box-shadow:0 0 0 8px rgba(184,50,42,.18)}}
+.vsimg{width:100%;border-radius:16px;display:block;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.vsbox{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:26px 14px 22px;border-radius:16px;background:linear-gradient(180deg,#17211b,#0e1511);border:1px solid #2a3a31}
+.vsteam{display:flex;flex-direction:column;align-items:center;gap:10px;min-width:0}
+.vsteam .disc{width:min(34vw,150px);aspect-ratio:1;border-radius:50%;background:#e7efea;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 0 0 3px var(--tc,#3fae74),0 8px 22px rgba(0,0,0,.4)}
+.vsteam .disc img{width:84%;height:84%;object-fit:contain}
+.vsteam .disc b{font-size:clamp(26px,9vw,48px);color:#0e1511}
+.vsteam span{font-weight:800;font-size:15px;line-height:1.2;max-width:100%}
+.vsmid{font-weight:800;font-size:18px;color:#9aada2;letter-spacing:.1em}
+.wteams{font-size:22px;font-weight:800;margin:2px 0 0}
+.wmeta{font-size:16px;color:#cfdcd4}
+.wcount{font-size:30px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
+.wsmall{font-size:13px;color:var(--muted)}
 .empty h1{color:var(--ink);font-size:20px;margin:0 0 6px}
 .stats{margin-top:12px;font-size:13px}
 .stats table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
@@ -84,6 +101,13 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 @keyframes pop{0%{transform:scale(0)}70%{transform:scale(1.3)}100%{transform:scale(1)}}
 @keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
 @keyframes slash{to{stroke-dashoffset:0}}
+@keyframes hbpBall{0%{transform:translate(95px,-6px)}40%{transform:translate(0,0)}100%{transform:translate(70px,-70px) rotate(540deg);opacity:0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes jump{0%,100%{transform:translateY(0)}35%,55%{transform:translateY(-28px)}}
+@keyframes look{0%,100%{transform:rotate(0)}50%{transform:rotate(-18deg)}}
+@keyframes wobble{0%,100%{transform:rotate(0)}25%{transform:rotate(-12deg)}75%{transform:rotate(12deg)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes roll{to{offset-distance:100%;transform:rotate(720deg)}}
 .sound{font:inherit;font-size:12px;color:var(--faint);background:none;border:0;cursor:pointer;text-decoration:underline}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important}}
 </style>
@@ -91,19 +115,20 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 <body>
 <div class="wrap" id="app"><div class="empty">Chargement…</div></div>
 <div id="layer"></div>
+<script src="/logos/logos.js"></script>
 <script src="/match/scorecard.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const G='#3fae74',C='#e7efea',GR='#2d6b37';
-let games=[],cur=null,seen={},lastFetch=0,fails=0,timer=null;
+let nextM=null,games=[],cur=null,seen={},lastFetch=0,fails=0,timer=null;
 const POLL=15000;
 
 async function fetchLive(){
   try{
     const r=await fetch('/api/live',{cache:'no-store'});
     const d=await r.json();
-    games=d.games||[];fails=0;lastFetch=Date.now();
+    games=d.games||[];nextM=d.next||null;fails=0;lastFetch=Date.now();
   }catch(e){fails++}
   if(!cur||!games.find(g=>g.id===cur))cur=games[0]?.id||null;
   render();
@@ -126,9 +151,28 @@ function diamond(b){
   <path d="M73 118 h14 v-5 l-7 -7 l-7 7 z" fill="${C}"/>${t(0,160,92,'end')}${t(1,80,-4,'middle')}${t(2,0,92,'start')}</svg>`;
 }
 
+/* ---- Page d'attente : le jour du match (avant le 1er lancer) ou le prochain match de la semaine ---- */
+const JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'],MOISL=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+function vsHTML(n){const L=window.DragonsLogos;
+  const u=L&&L.url(n.opp),col=L?L.color(n.opp):'#9aada2';
+  const team=(src,name,c,ini)=>`<div class="vsteam"><div class="disc" style="--tc:${c}">${src?`<img src="${src}" alt="">`:`<b>${esc(ini)}</b>`}</div><span>${esc(name)}</span></div>`;
+  return `<div class="vsbox" role="img" aria-label="Dragons contre ${esc(n.opp)}">${team('/logos/dragons.png','Dragons','#3fae74')}<div class="vsmid">VS</div>${team(u,n.opp,col,L?L.initials(n.opp):'?')}</div>`}
+function countTxt(n){if(!n.time)return '';const t=new Date(n.day+'T'+n.time+':00');const ms=t-Date.now();
+  if(ms<=0)return n.today?'C’est l’heure !':'';const min=Math.round(ms/60000),d=Math.floor(min/1440),h=Math.floor(min%1440/60),mm=min%60;
+  return d>=1?`dans ${d} jour${d>1?'s':''}${h?' '+h+' h':''}`:h?`dans ${h} h ${String(mm).padStart(2,'0')}`:`dans ${mm} min`}
+function renderWait(app,n){const dt=new Date(n.day+'T12:00:00');
+  const when=n.today?'Aujourd’hui':`${JOURS[dt.getDay()][0].toUpperCase()+JOURS[dt.getDay()].slice(1)} ${dt.getDate()} ${MOISL[dt.getMonth()]}`;
+  const c=countTxt(n);
+  app.innerHTML=`<div class="top"><div class="brand"><img src="/logos/dragons.png" alt="" width="32" height="32" style="width:32px;height:32px;object-fit:contain">Dragons de Ronchin</div></div>
+  <div class="wait"><div class="wtag ${n.today?'':'soft'}">${n.today?'⚾ Jour de match':'Prochain match'}</div>${vsHTML(n)}
+  <div><div class="wteams">Dragons – ${esc(n.opp)}</div><div class="wmeta">${when}${n.time?' · '+n.time.replace(':','h'):''} · ${n.home?'à Ronchin':'à l’extérieur'}</div></div>
+  ${c?`<div><div class="wsmall">${n.today&&c!=='C’est l’heure !'?'Premier lancer':''}</div><div class="wcount" id="wcount">${c}</div></div>`:''}
+  <div class="wsmall">${n.today?'Le score et les actions s’afficheront ici dès le premier lancer, sans recharger la page.':'Le jour du match, le score s’affichera ici en direct.'}</div></div>`}
+setInterval(()=>{const el=document.getElementById('wcount');if(el&&nextM){el.textContent=countTxt(nextM)}},30000);
 function render(){
   const app=$('app'),g=games.find(x=>x.id===cur);
   if(g&&g.over){renderFinal(app,g);return}
+  if(!g&&nextM){renderWait(app,nextM);return}
   if(!g){app.innerHTML=`<div class="top"><div class="brand"><div class="logo">DR</div>Dragons de Ronchin</div></div><div class="empty"><h1>Pas de match en direct</h1>Reviens pendant le prochain match des Dragons : le score s’affichera ici tout seul.</div>`;return}
   const us=sum(g.us),them=sum(g.them),inns=Math.max(7,g.inn||1);
   const ourFirst=g.first==='att';
@@ -146,7 +190,8 @@ function render(){
   }else{
     const db=(g.dBases||[]).map(x=>x?' ':null);
     mid=`<div class="play"><div>${diamond(db)}</div><div>
-      <div class="big" style="font-size:19px">Les Dragons sont en défense</div>
+      <div style="display:flex;align-items:center;gap:10px">${window.DragonsLogos?DragonsLogos.badge(g.opp,40):''}<div class="big" style="font-size:19px">${esc(shortOpp(g.opp))} en attaque</div></div>
+      ${g.oppBatter?`<div class="lbl" style="margin-top:6px">Au bâton : <b style="color:var(--ink)">${esc(g.oppBatter)}</b></div>`:''}
       ${g.pitcher?`<div class="lbl" style="margin-top:6px">Pitcher : ${esc(g.pitcher)}</div>`:''}
       <div class="lbl" style="margin-top:6px">Outs${[0,1,2].map(i=>`<span class="o ${(g.dOuts||0)>i?'on':''}"></span>`).join('')}</div>
       <div class="lbl" style="margin-top:6px">${+(g.them?.[g.inn]||0)} point(s) adverse(s) cet inning</div></div></div>`;
@@ -166,7 +211,7 @@ function render(){
   <div class="card ls"><table><thead><tr><th class="l">Inning</th>${Array.from({length:inns},(_,i)=>`<th class="${i+1===g.inn&&!g.over?'cur':''}">${i+1}</th>`).join('')}<th>R</th></tr></thead>
   <tbody>${ourFirst?row('Dragons',g.us,true)+row(shortOpp(g.opp),g.them,false):row(shortOpp(g.opp),g.them,false)+row('Dragons',g.us,true)}</tbody></table></div>
   <div class="feedh">Dernières actions</div>
-  <div class="feed">${(g.feed||[]).slice(0,12).map(f=>{const run=f.k==='RUN',dim=['K','GO','FO','OUT','FC','SAC'].includes(f.k);const t=esc(f.txt);
+  <div class="feed">${(g.feed||[]).slice(0,12).map(f=>{const run=f.k==='RUN',dim=['K','GO','FO','OUT','FC','SAC','OPA'].includes(f.k);const t=esc(f.txt);
     return `<div class="it ${run?'run':''} ${dim?'dim':''} ${fresh.has(g.id+':'+f.n)?'new':''}">${run?t.replace(/^Point/,'<b>Point</b>'):t}</div>`}).join('')||'<div class="it dim">Le match va commencer.</div>'}</div>
   <div class="foot">Mis à jour ${ago(g.updated)} · ${esc(location.host)}/live</div>`;
 }
@@ -198,6 +243,20 @@ function shortOpp(o){return String(o||'Adversaire').split(' ').filter(w=>!/^(de|
 const fresh=new Set();
 const dia=(path,base)=>`<svg viewBox="0 0 160 120" width="170" height="128"><path d="M80 110 L135 60 L80 10 L25 60 Z" fill="${GR}" stroke="#3f8a4a" stroke-width="2"/>${[[135,60],[80,10],[25,60]].map(([x,y],i)=>`<rect x="${x-7}" y="${y-7}" width="14" height="14" transform="rotate(45 ${x} ${y})" fill="${i<base?G:'#0e1511'}" stroke="#9aada2" stroke-width="1.5"/>`).join('')}<path d="M74 108 h12 v-4 l-6 -6 l-6 6 z" fill="${C}"/><path d="${path}" fill="none" stroke="${G}" stroke-width="4" stroke-linecap="round" stroke-dasharray="300" stroke-dashoffset="300" style="animation:dash .9s .25s ease-out forwards"/></svg>`;
 const ball=(cx)=>`<circle cx="${cx}" cy="30" r="17" fill="#fff"/><path d="M${cx-10} 20 Q${cx} 30 ${cx-10} 40 M${cx+10} 20 Q${cx} 30 ${cx+10} 40" stroke="#b8322a" stroke-width="2" fill="none"/>`;
+// petit receveur accroupi (masque, plastron vert, gant) ; up = bras levé pour sauter
+function catcher(x,y,up){return `<g>
+  <path d="M${x-6} ${y-4} L${x-20} ${y+8} L${x-12} ${y+20} M${x+6} ${y-4} L${x+20} ${y+8} L${x+12} ${y+20}" stroke="${C}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <rect x="${x-13}" y="${y-32}" width="26" height="30" rx="8" fill="${GR}" stroke="${G}" stroke-width="2"/>
+  <circle cx="${x}" cy="${y-42}" r="10" fill="#f1c9a5"/><path d="M${x-10} ${y-44} a10 10 0 0 1 20 0z" fill="#333"/><path d="M${x-7} ${y-41} h14 M${x-7} ${y-37} h14 M${x} ${y-44} v10" stroke="#333" stroke-width="1.5"/>
+  ${up?`<path d="M${x+10} ${y-26} L${x+20} ${y-50}" stroke="${C}" stroke-width="5" stroke-linecap="round"/><ellipse cx="${x+22}" cy="${y-58}" rx="9" ry="10" fill="#c98a55" stroke="#7a4a22" stroke-width="2"/>`
+     :`<path d="M${x+10} ${y-24} L${x+18} ${y-12}" stroke="${C}" stroke-width="5" stroke-linecap="round"/><ellipse cx="${x+22}" cy="${y-8}" rx="10" ry="9" fill="#c98a55" stroke="#7a4a22" stroke-width="2"/>`}
+  <path d="M${x-10} ${y-24} L${x-18} ${y-10}" stroke="${C}" stroke-width="5" stroke-linecap="round"/></g>`}
+// balle lancée par-dessus le joueur, qui file au-dessus de la clôture et sort du terrain
+function outThrow(lbl){return `<svg viewBox="0 0 210 130" width="215" height="133">
+  <path d="M0 118 H150" stroke="#3f8a4a" stroke-width="3"/><rect x="150" y="60" width="8" height="60" fill="#9aada2"/>${[70,84,98,112].map(y=>`<path d="M158 ${y} h40" stroke="#9aada2" stroke-width="2"/>`).join('')}
+  <g><circle cx="105" cy="58" r="9" fill="#f1c9a5"/><path d="M96 56 a9 9 0 0 1 18 0z" fill="#555"/><path d="M105 68 v26 M105 94 l-9 22 M105 94 l9 22 M105 74 l-14 -16 M105 74 l14 -20" stroke="${C}" stroke-width="5" stroke-linecap="round"/><ellipse cx="121" cy="50" rx="7" ry="8" fill="#c98a55" stroke="#7a4a22" stroke-width="2"/></g>
+  <g style="offset-path:path('M4 80 Q100 -10 230 30');animation:arc 1.2s .15s ease-out both"><circle r="8" fill="#fff"/><path d="M-4 -5 q4 5 0 10 M4 -5 q-4 5 0 10" stroke="#b8322a" stroke-width="1.5" fill="none"/></g>
+  <g style="transform-origin:60px 20px;animation:pop .4s 1.1s both"><rect x="8" y="6" width="${lbl.length*11+12}" height="30" rx="15" fill="${G}"/><text x="${14+lbl.length*5.5}" y="27" text-anchor="middle" font-size="17" font-weight="800" fill="#06130c">${lbl}</text></g></svg>`}
 const VIS={
   '1B':()=>dia('M80 104 L135 60',1),
   '2B':()=>dia('M80 104 L135 60 L80 10',2),
@@ -205,16 +264,46 @@ const VIS={
   'SB':f=>f.to===1?dia('M135 60 L80 10',2):dia('M80 10 L25 60',3),
   'HR':()=>`<svg viewBox="0 0 220 120" width="230" height="125"><path d="M0 105 Q110 90 220 105" stroke="#3f8a4a" stroke-width="3" fill="none"/><rect x="150" y="62" width="70" height="8" fill="#9aada2"/><rect x="150" y="70" width="70" height="35" fill="${GR}"/><path d="M20 100 Q110 -30 205 40" fill="none" stroke="${G}" stroke-width="2" stroke-dasharray="4 5" opacity=".7"/><circle r="8" fill="#fff" style="offset-path:path('M20 100 Q110 -30 205 40');animation:arc 1.1s ease-out forwards"/></svg>`,
   'BB':()=>`<svg viewBox="0 0 200 60" width="200" height="60">${[0,1,2,3].map(i=>`<g style="transform-origin:${30+i*46}px 30px;animation:pop .35s ${0.15+i*0.18}s both">${ball(30+i*46)}</g>`).join('')}</svg>`,
-  'HBP':()=>`<svg viewBox="0 0 120 90" width="120" height="90" style="animation:shake .4s .3s 2"><circle cx="60" cy="45" r="30" fill="#fff"/><path d="M42 26 Q60 45 42 64 M78 26 Q60 45 78 64" stroke="#b8322a" stroke-width="3" fill="none"/><g style="transform-origin:95px 18px;animation:pop .3s .2s both"><path d="M88 6 L96 16 M100 4 L100 16 M108 10 L102 18" stroke="${G}" stroke-width="3" stroke-linecap="round"/></g></svg>`,
   'KDEF':()=>`<svg viewBox="0 0 160 90" width="160" height="90"><text x="80" y="76" text-anchor="middle" font-size="86" font-weight="600" fill="${G}" style="transform-origin:80px 45px;animation:pop .4s .1s both">K</text>${[0,1,2].map(i=>`<path d="M${30+i*44} 84 l22 0" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="60" style="animation:slash .25s ${0.45+i*0.15}s forwards"/>`).join('')}</svg>`,
+  // Hit by pitch : la balle rebondit sur le casque, petites étoiles qui tournent
+  'HBP':()=>`<svg viewBox="0 0 170 120" width="180" height="128">
+    <g style="transform-origin:62px 70px;animation:wobble .5s .55s 2">
+      <circle cx="62" cy="52" r="20" fill="#f1c9a5"/><path d="M40 52 a22 22 0 0 1 44 -4 l10 3 l-2 6 l-52 0z" fill="${GR}" stroke="${G}" stroke-width="2"/>
+      <circle cx="56" cy="56" r="2.5" fill="#0e1511"/><circle cx="68" cy="56" r="2.5" fill="#0e1511"/><path d="M55 64 q7 6 14 0" stroke="#0e1511" stroke-width="2" fill="none" style="animation:fade .2s .55s both"/>
+      <path d="M62 72 v28 M62 82 l-16 10 M62 82 l18 -6 M62 100 l-10 16 M62 100 l12 16" stroke="${C}" stroke-width="5" stroke-linecap="round"/>
+      <path d="M80 76 l26 -40" stroke="#c98a55" stroke-width="6" stroke-linecap="round"/></g>
+    <g style="animation:hbpBall 1.3s .15s ease-in both"><circle cx="84" cy="44" r="9" fill="#fff"/><path d="M79 38 q5 6 0 12 M89 38 q-5 6 0 12" stroke="#b8322a" stroke-width="1.5" fill="none"/></g>
+    <g style="transform-origin:62px 26px;animation:spin 1.2s .6s linear infinite,fade .2s .55s both">${[0,1,2].map(i=>`<text x="${62+28*Math.cos(i*2.1)}" y="${30+9*Math.sin(i*2.1)}" text-anchor="middle" font-size="16" fill="#f2b632">★</text>`).join('')}</g>
+    <text x="128" y="96" font-size="22" font-weight="800" fill="${G}" style="transform-origin:128px 88px;animation:pop .35s .6s both">AÏE !</text></svg>`,
+  // Wild pitch : la balle passe au-dessus du receveur qui saute
+  'WP':()=>`<svg viewBox="0 0 210 130" width="215" height="133">
+    <path d="M0 122 H210" stroke="#3f8a4a" stroke-width="3"/>
+    <g style="animation:jump .9s .35s ease-in-out both">${catcher(105,104,true)}</g>
+    <g style="offset-path:path('M6 70 Q105 -40 204 60');animation:arc 1.2s .2s linear both"><circle r="8" fill="#fff"/><path d="M-4 -5 q4 5 0 10 M4 -5 q-4 5 0 10" stroke="#b8322a" stroke-width="1.5" fill="none"/></g>
+    <text x="170" y="112" font-size="22" font-weight="800" fill="#f2b632" style="transform-origin:170px 104px;animation:pop .35s 1.1s both">?!</text></svg>`,
+  // Passed ball : la balle passe entre les jambes du receveur
+  'PB':()=>`<svg viewBox="0 0 210 130" width="215" height="133">
+    <path d="M0 124 H210" stroke="#3f8a4a" stroke-width="3"/>
+    <g style="transform-origin:105px 70px;animation:look .5s 1s 2">${catcher(105,96,false)}</g>
+    <g style="offset-path:path('M0 116 L210 117');animation:arc 1.3s .2s linear both"><circle r="7" fill="#fff" style="animation:spin .3s linear infinite"/><path d="M-3 -4 q3 4 0 8 M3 -4 q-3 4 0 8" stroke="#b8322a" stroke-width="1.5" fill="none"/></g>
+    <text x="18" y="30" font-size="20" font-weight="800" fill="#f2b632" style="transform-origin:50px 22px;animation:pop .35s .9s both">OUPS !</text></svg>`,
+  // Erreurs de lancer : la balle sort du terrain
+  'OT1':()=>outThrow('+1 base'),
+  'OT2':()=>outThrow('+2 bases'),
+  // Balk : le lanceur adverse se fige sur le monticule, carton rouge de l'arbitre
+  'BK':()=>`<svg viewBox="0 0 180 120" width="185" height="124">
+    <ellipse cx="70" cy="104" rx="52" ry="12" fill="#c98a55"/><rect x="58" y="96" width="24" height="5" fill="#fff"/>
+    <g style="transform-origin:70px 96px;animation:wobble .25s .5s 4"><circle cx="70" cy="40" r="12" fill="#f1c9a5"/><path d="M58 38 a12 12 0 0 1 24 0z" fill="#555"/><path d="M70 52 v26 M70 60 l-18 -8 M70 60 l16 8 M70 78 l-10 18 M70 78 l10 18" stroke="${C}" stroke-width="5" stroke-linecap="round"/></g>
+    <g style="transform-origin:140px 50px;animation:pop .4s .55s both"><circle cx="140" cy="50" r="24" fill="#b8322a"/><text x="140" y="62" text-anchor="middle" font-size="34" font-weight="900" fill="#fff">!</text></g></svg>`,
   'RUN':()=>`<svg viewBox="0 0 160 90" width="160" height="90"><path d="M60 80 h40 v-16 l-20 -20 l-20 20 z" fill="${C}" style="transform-origin:80px 60px;animation:pop .4s .1s both"/><circle cx="80" cy="22" r="10" fill="${G}" style="animation:pop .4s .4s both;transform-origin:80px 22px"/></svg>`
 };
-const TITLE={'1B':'Simple !','2B':'Double !','3B':'Triple !','HR':'Home run !','BB':'Walk','HBP':'Hit by pitch !','SB':'Stolen base !','KDEF':'Strikeout !','RUN':'Point !'};
+const TITLE={'OT1':'Erreur de pick\u2011off !','OT2':'Erreur de relais !','WP':'Wild pitch !','PB':'Passed ball !','BK':'Balk !','1B':'Simple !','2B':'Double !','3B':'Triple !','HR':'Home run !','BB':'Walk','HBP':'Hit by pitch !','SB':'Stolen base !','KDEF':'Strikeout !','RUN':'Point !'};
 const CONF=new Set(['HR','KDEF']);
 let q=[],showing=false,ptm;
 function queueNew(g){
   const items=(g.feed||[]).slice().reverse();
   const key=g.id;
+  if(g.over){seen[key]=items.reduce((a,f)=>Math.max(a,f.n),seen[key]==null?-1:seen[key]);q=[];return} // match fini : l'image de fin, sans pop-ups
   if(seen[key]==null){seen[key]=items.reduce((a,f)=>Math.max(a,f.n),-1);return} // première ouverture : pas de rafale
   const nw=items.filter(f=>f.n>seen[key]);
   if(!nw.length)return;
@@ -227,7 +316,7 @@ function queueNew(g){
 function next(){
   const f=q.shift();if(!f){showing=false;return}
   showing=true;
-  const sub=f.k==='KDEF'?'':(f.k==='RUN'?'Un point pour les Dragons':'');
+  const sub=f.k==='KDEF'?'':f.k==='RUN'?'Un point pour les Dragons':{OT1:'La balle sort du terrain',OT2:'La balle sort du terrain',WP:'Par-dessus le receveur !',PB:'Entre les jambes du receveur !',BK:'Faute du lanceur adverse : les coureurs avancent',HBP:'Direction la 1re base'}[f.k]||'';
   const who=f.k==='KDEF'?`par ${f.who||''}`:(f.who||'');
   const conf=CONF.has(f.k)?Array.from({length:22},(_,i)=>`<span class="cf" style="left:${Math.random()*100}%;background:${['#3fae74','#b8322a','#e7efea','#5cbf6b'][i%4]};animation-delay:${Math.random()*.5}s"></span>`).join(''):'';
   $('layer').innerHTML=`<div class="pp" role="status"><div class="pc">${conf}<div style="display:flex;justify-content:center">${VIS[f.k](f)}</div><div class="pt">${TITLE[f.k]}</div><div class="pw">${esc(who)}</div>${sub?`<div class="ps">${sub}</div>`:''}</div></div>`;
@@ -240,6 +329,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-g]');if(b)
   if(e.target.closest('[data-img]')){const g=games.find(x=>x.id===cur);if(g&&window.DragonsScorecard)DragonsScorecard.show({opp:g.opp,date:g.date,us:g.us,them:g.them,inn:g.inn,first:g.first,home:g.home})}});
 setInterval(()=>{const f=document.querySelector('.foot');const g=games.find(x=>x.id===cur);if(f&&g)f.textContent=`Mis à jour ${ago(g.updated)} · ${location.host}/live`},5000);
 fetchLive();
+window.DragonsLogos&&DragonsLogos.ready.then(()=>render());
 </script>
 </body>
 </html>

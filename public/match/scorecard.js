@@ -47,9 +47,19 @@
     x.fillText(res, W / 2, 410);
 
     rr(x, 70, 450, W - 140, 260, 28); x.fillStyle = C.card; x.fill();
+    // pastilles : notre logo à gauche, logo adverse (ou initiales) à droite
+    const disc = (cx, cy, r, img, txt) => {
+      x.save(); x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fillStyle = "#0e1511"; x.fill(); x.clip();
+      if (img) x.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+      else { x.fillStyle = C.line; x.fillRect(cx - r, cy - r, r * 2, r * 2); x.fillStyle = C.ink; x.font = `800 ${Math.round(r * 0.8)}px ${FONT}`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(txt, cx, cy + 2); x.textBaseline = "alphabetic"; }
+      x.restore(); x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.strokeStyle = C.line; x.lineWidth = 3; x.stroke();
+    };
+    const L = window.DragonsLogos, oppLogo = L ? await L.load(opp) : null;
+    disc(150, 505, 34, logo, "DR");
+    disc(W - 150, 505, 34, oppLogo, L ? L.initials(opp) : opp.slice(0, 2).toUpperCase());
     x.font = `600 34px ${FONT}`; x.fillStyle = C.muted;
-    x.textAlign = "left"; x.fillText("Dragons", 120, 515);
-    x.textAlign = "right"; x.fillText(fit(x, opp, 380), W - 120, 515);
+    x.textAlign = "left"; x.fillText("Dragons", 200, 517);
+    x.textAlign = "right"; x.fillText(fit(x, opp, 300), W - 200, 517);
     x.fillStyle = C.ink; x.font = `800 170px ${FONT}`;
     x.textAlign = "left"; x.fillText(String(us), 120, 670);
     x.textAlign = "right"; x.fillText(String(them), W - 120, 670);

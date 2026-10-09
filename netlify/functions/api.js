@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { loadTeams, TEAMS_KEY, TEAM_LOGO_PREFIX, TEAMS_DELETED_KEY, DEFAULT_TEAMS } from "../lib/teams-data.js";
 import crypto from "node:crypto";
 
 /* ------------------------------------------------------------------ */
@@ -15,6 +16,12 @@ const STAFF_ROLES = ["coach", "owner"];
 
 function isStaffRole(role) {
   return STAFF_ROLES.includes(role);
+}
+/* Scoreuse : lecture des feuilles de match (noms complets), compos publiées,
+   saisie du line-up adverse. Aucun droit d'écriture sur le reste. */
+const SCORER_ROLE = "scorer";
+function canReadSheets(role) {
+  return isStaffRole(role) || role === SCORER_ROLE;
 }
 
 /* ------------------------------------------------------------------ */
@@ -246,12 +253,17 @@ async function handleBackup(store, state, session, action, body) {
       if (!raw) return fail(404, "Sauvegarde introuvable.");
       data = JSON.parse(raw);
     }
-    const sheets = [];
+    const sheets = [], extra = {};
     if (!body.day) {
       const { blobs } = await store.list({ prefix: "scoresheet/" });
       for (const b of blobs) { const r = await store.get(b.key); if (r) sheets.push(JSON.parse(r)); }
+      // line-ups adverses et fiches scouting
+      for (const pre of ["opp/", "scout/"]) {
+        const { blobs: bl } = await store.list({ prefix: pre });
+        for (const b of bl) { const r = await store.get(b.key); if (r) extra[b.key] = JSON.parse(r); }
+      }
     }
-    return ok({ backup: { kind: "dragons-backup", version: 1, exportedAt: new Date().toISOString(), state: data, scoresheets: sheets } });
+    return ok({ backup: { kind: "dragons-backup", version: 2, exportedAt: new Date().toISOString(), state: data, scoresheets: sheets, extra } });
   }
   if (action === "restoreBackup") {
     const b = body.backup;
@@ -270,6 +282,14 @@ async function handleBackup(store, state, session, action, body) {
     for (const sh of Array.isArray(b.scoresheets) ? b.scoresheets : []) {
       const c = cleanSheet(sh);
       if (c) { await store.set("scoresheet/" + c.id, JSON.stringify(c)); n++; }
+    }
+    if (b.extra && typeof b.extra === "object") {
+      for (const [k, v] of Object.entries(b.extra)) {
+        if (/^(opp\/[a-z0-9]{4,24}|scout\/[a-z0-9-]{1,80})$/.test(k) && v && typeof v === "object") {
+          const raw = JSON.stringify(v);
+          if (raw.length <= 200 * 1024) await store.set(k, raw);
+        }
+      }
     }
     return ok({ restored: true, scoresheets: n, state: sanitize(next, session) });
   }
@@ -355,11 +375,11 @@ function randomToken() {
    to anyone poking at network requests. */
 function sanitize(state, session) {
   const isStaff = session && STAFF_ROLES.includes(session.role);
-  const claimedPlayerIds = Object.values(state.accounts).map((acc) => acc.playerId);
+  const claimedPlayerIds = Object.values(state.accounts).map((acc) => acc.playerId).filter(Boolean);
   if (isStaff) {
     const accounts = {};
     Object.entries(state.accounts).forEach(([uname, acc]) => {
-      accounts[uname] = { playerId: acc.playerId, role: acc.role };
+      accounts[uname] = { playerId: acc.playerId, role: acc.role, label: acc.label || "" };
     });
     return { ...state, accounts };
   }
@@ -373,9 +393,12 @@ function sanitize(state, session) {
     };
   }
   // Joueur connecté : pas de comptes, pas de journal, compositions seulement à J-2.
+  // Scoreuse : toutes les compositions publiées, dès leur envoi.
   const lineups = {};
   state.matches.forEach((m) => {
-    if (state.lineups[m.id] && lineupVisibleToPlayers(m)) lineups[m.id] = state.lineups[m.id];
+    const lu = state.lineups[m.id];
+    if (!lu) return;
+    if (session.role === SCORER_ROLE ? lu.publishedAt : lineupVisibleToPlayers(m)) lineups[m.id] = lu;
   });
   const { accounts, auditLog, ...rest } = state;
   return { ...rest, lineups, auditLog: [], claimedPlayerIds };
@@ -659,12 +682,12 @@ async function applyMutation(store, state, session, action, body) {
     case "updateMatchField": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { matchId, field, value } = body;
-      if (!["label", "date", "opponent", "location", "season", "cancelled"].includes(field)) return { error: "Champ invalide." };
+      if (!["label", "date", "time", "opponent", "location", "season", "cancelled"].includes(field)) return { error: "Champ invalide." };
       if (field === "season" && !SEASON_RE.test(String(value || ""))) return { error: "Saison invalide (ex : 2027)." };
       const matches = s.matches.map((m) => (m.id === matchId ? { ...m, [field]: value } : m));
       s = { ...s, matches, ...(field === "season" && !s.seasons.includes(value) ? { seasons: [...s.seasons, value].sort((a, b) => b.localeCompare(a)) } : {}) };
       const matchLabel = matches.find((m) => m.id === matchId)?.label || matchId;
-      const fieldLabels = { label: "le nom", date: "la date", opponent: "l'équipe adverse", location: "domicile/extérieur", season: "la saison", cancelled: "le statut annulé" };
+      const fieldLabels = { label: "le nom", date: "la date", time: "l'heure", opponent: "l'équipe adverse", location: "domicile/extérieur", season: "la saison", cancelled: "le statut annulé" };
       s = logAction(s, actingUser, `a modifié ${fieldLabels[field] || field} de ${matchLabel}`);
       break;
     }
@@ -862,12 +885,12 @@ async function applyMutation(store, state, session, action, body) {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { username, newRole } = body;
       if (!s.accounts[username]) return { error: "Compte introuvable." };
-      if (!["player", "coach", "owner"].includes(newRole)) return { error: "Rôle invalide." };
+      if (!["player", "coach", "owner", SCORER_ROLE].includes(newRole)) return { error: "Rôle invalide." };
       const currentRole = s.accounts[username].role;
       const touchesStaff = isStaffRole(currentRole) || isStaffRole(newRole);
       if (touchesStaff && role !== "owner") return { error: "Seul le compte propriétaire peut changer le rôle d'un membre du staff." };
       s = { ...s, accounts: { ...s.accounts, [username]: { ...s.accounts[username], role: newRole } } };
-      s = logAction(s, actingUser, `a changé le rôle de "${username}" → ${newRole === "owner" ? "propriétaire" : newRole === "coach" ? "staff" : "joueur"}`);
+      s = logAction(s, actingUser, `a changé le rôle de "${username}" → ${newRole === "owner" ? "propriétaire" : newRole === "coach" ? "staff" : newRole === SCORER_ROLE ? "scoreuse" : "joueur"}`);
       break;
     }
     case "renameAccount": {
@@ -884,6 +907,21 @@ async function applyMutation(store, state, session, action, body) {
       const { [oldUsername]: _r, ...rest } = s.accounts;
       s = { ...s, accounts: { ...rest, [uname]: acc } };
       s = logAction(s, actingUser, `a renommé le compte "${oldUsername}" → "${uname}"`);
+      break;
+    }
+    case "createAccount": {
+      // Compte créé par le propriétaire (scoreuse, non lié à un joueur) : il
+      // transmet lui-même l'identifiant et le mot de passe à la personne.
+      if (role !== "owner") return { error: "Réservé au compte propriétaire." };
+      const uname = String(body.username || "").trim().toLowerCase();
+      const pwd = String(body.password || "");
+      const newRole = body.newRole === "coach" ? "coach" : SCORER_ROLE;
+      if (!/^[a-z0-9._-]{3,30}$/.test(uname)) return { error: "Identifiant : 3 à 30 caractères (lettres, chiffres, . _ -)." };
+      if (s.accounts[uname]) return { error: "Cet identifiant est déjà pris." };
+      if (pwd.length < MIN_PASSWORD) return { error: `Le mot de passe doit faire au moins ${MIN_PASSWORD} caractères.` };
+      const label = String(body.label || "").trim().slice(0, 40);
+      s = { ...s, accounts: { ...s.accounts, [uname]: { passwordHash: hashPassword(pwd), playerId: null, role: newRole, label } } };
+      s = logAction(s, actingUser, `a créé le compte "${uname}" (${newRole === SCORER_ROLE ? "scoreuse" : "staff"})`);
       break;
     }
     case "addPlayer": {
@@ -962,7 +1000,7 @@ async function applyMutation(store, state, session, action, body) {
 
 const SHEET_PREFIX = "scoresheet/";
 const SHEET_MAX_BYTES = 300 * 1024;
-const SHEET_FIELDS = ["id", "opp", "date", "home", "first", "lineup", "pitcher", "catcher", "dh", "events", "names", "created", "updated", "linkedMatchId", "device", "live"];
+const SHEET_FIELDS = ["id", "opp", "date", "home", "first", "lineup", "pitcher", "catcher", "dh", "pos", "kind", "spray", "events", "names", "created", "updated", "linkedMatchId", "device", "live"];
 const LIVE_PREFIX = "live/";
 
 /* Version publique d'un match (page /live, sans connexion). La tablette envoie
@@ -997,7 +1035,7 @@ function cleanSheet(raw) {
 }
 
 async function handleScoresheet(store, state, session, action, body) {
-  if (!isStaffRole(session.role)) return fail(403, "Réservé au coaching staff.");
+  if (action === "getScoresheets" ? !canReadSheets(session.role) : !isStaffRole(session.role)) return fail(403, "Réservé au coaching staff.");
 
   if (action === "getScoresheets") {
     const { blobs } = await store.list({ prefix: SHEET_PREFIX });
@@ -1049,6 +1087,118 @@ async function handleScoresheet(store, state, session, action, body) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Adversaires : line-up adverse (scoreuse + staff) et fiches de scouting */
+/* (staff uniquement). Jamais exposés sur la page /live publique.        */
+/* ------------------------------------------------------------------ */
+
+const OPP_PREFIX = "opp/";
+const SCOUT_PREFIX = "scout/";
+const str = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
+function teamSlug(name) {
+  return str(name, 80).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "adversaire";
+}
+function cleanOppPlayer(p) {
+  if (!p || typeof p !== "object") return null;
+  const o = { num: str(p.num, 3).replace(/[^0-9]/g, ""), prenom: str(p.prenom, 30), nom: str(p.nom, 40), pos: str(p.pos, 3).toUpperCase(), hand: str(p.hand, 1) };
+  return o.num || o.prenom || o.nom ? o : null;
+}
+
+/* Équipes adverses + logos (page publique /api/teams) — staff uniquement en écriture */
+async function handleTeams(store, session, action, body) {
+  if (!isStaffRole(session.role)) return fail(403, "Réservé au coaching staff.");
+  let teams = await loadTeams(store);
+  const slugId = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
+  if (action === "saveTeam") {
+    const t = body.team || {};
+    const name = str(t.name, 60).trim();
+    if (!name) return fail(400, "Donne un nom à l'équipe.");
+    const aliases = (Array.isArray(t.aliases) ? t.aliases : String(t.aliases || "").split(",")).map((x) => str(x, 40).trim()).filter(Boolean).slice(0, 8);
+    const color = /^#[0-9a-f]{6}$/i.test(t.color || "") ? t.color : "#9aada2";
+    let id = t.id && teams.some((x) => x.id === t.id) ? t.id : slugId(name) || "equipe";
+    if (!t.id || !teams.some((x) => x.id === t.id)) { let base = id, n = 2; while (teams.some((x) => x.id === id)) id = base + "-" + n++; }
+    const prev = teams.find((x) => x.id === id);
+    const doc = { id, name, aliases, color, logo: prev ? prev.logo || "" : "" };
+    teams = prev ? teams.map((x) => (x.id === id ? doc : x)) : [...teams, doc];
+  } else if (action === "deleteTeam") {
+    teams = teams.filter((x) => x.id !== body.id);
+    if (DEFAULT_TEAMS.some((d) => d.id === body.id)) {
+      const del = JSON.parse((await store.get(TEAMS_DELETED_KEY)) || "[]");
+      if (!del.includes(body.id)) await store.set(TEAMS_DELETED_KEY, JSON.stringify([...del, body.id]));
+    }
+    await store.delete(TEAM_LOGO_PREFIX + body.id).catch(() => {});
+  } else if (action === "setTeamLogo") {
+    const tm = teams.find((x) => x.id === body.id);
+    if (!tm) return fail(404, "Équipe introuvable.");
+    const d = String(body.dataUrl || "");
+    if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(d)) return fail(400, "Image invalide (PNG, JPEG ou WebP).");
+    if (d.length > 400 * 1024) return fail(400, "Image trop lourde.");
+    await store.set(TEAM_LOGO_PREFIX + tm.id, d);
+    teams = teams.map((x) => (x.id === tm.id ? { ...x, logo: "/api/teams?logo=" + tm.id + "&v=" + Date.now().toString(36) } : x));
+  } else if (action !== "listTeams") return fail(400, "Action inconnue.");
+  if (action !== "listTeams") await store.set(TEAMS_KEY, JSON.stringify(teams));
+  return ok({ teams });
+}
+
+async function handleOpponents(store, session, action, body) {
+  const role = session.role;
+  if (action === "getOppLineups") {
+    if (!canReadSheets(role)) return fail(403, "Réservé au staff et à la scoreuse.");
+    const { blobs } = await store.list({ prefix: OPP_PREFIX });
+    const out = [];
+    for (const b of blobs) { const raw = await store.get(b.key); if (raw) { try { out.push(JSON.parse(raw)); } catch (e) {} } }
+    return ok({ lineups: out });
+  }
+  if (action === "saveOppLineup") {
+    if (!canReadSheets(role)) return fail(403, "Réservé au staff et à la scoreuse.");
+    const sheetId = String(body.sheetId || "");
+    if (!/^[a-z0-9]{4,24}$/.test(sheetId)) return fail(400, "Match introuvable.");
+    const l = body.lineup || {};
+    const order = (Array.isArray(l.order) ? l.order : []).slice(0, 12).map(cleanOppPlayer);
+    const bench = (Array.isArray(l.bench) ? l.bench : []).slice(0, 20).map(cleanOppPlayer).filter(Boolean);
+    const pitcher = cleanOppPlayer(l.pitcher);
+    const out = (Array.isArray(l.out) ? l.out : []).slice(0, 30).map(cleanOppPlayer).filter(Boolean);
+    const subs = (Array.isArray(l.subs) ? l.subs : []).slice(0, 60).map((x) => x && typeof x === "object" ? {
+      inn: Math.max(1, Math.min(30, parseInt(x.inn, 10) || 1)), half: str(x.half, 6), slot: str(x.slot, 2),
+      pos: str(x.pos, 3).toUpperCase(), out: cleanOppPlayer(x.out), in: cleanOppPlayer(x.in), at: Number(x.at) || Date.now(),
+      kind: x.kind === "pos" ? "pos" : "sub", who: cleanOppPlayer(x.who), from: str(x.from, 3).toUpperCase(), to: str(x.to, 3).toUpperCase(),
+    } : null).filter((x) => x && (x.kind === "pos" ? x.who && x.to : x.out && x.in));
+    const doc = { sheetId, team: str(l.team, 80), teamSlug: teamSlug(l.team), date: str(l.date, 10), order, bench, pitcher, out, subs, updated: Date.now(), by: session.username };
+    await store.set(OPP_PREFIX + sheetId, JSON.stringify(doc));
+    return ok({ lineup: doc });
+  }
+  // Fiches de scouting : staff uniquement
+  if (!isStaffRole(role)) return fail(403, "Réservé au coaching staff.");
+  if (action === "listScout") {
+    const { blobs } = await store.list({ prefix: SCOUT_PREFIX });
+    const out = [];
+    for (const b of blobs) { const raw = await store.get(b.key); if (raw) { try { out.push(JSON.parse(raw)); } catch (e) {} } }
+    return ok({ teams: out });
+  }
+  const slug = teamSlug(body.team);
+  const key = SCOUT_PREFIX + slug;
+  const prev = JSON.parse((await store.get(key)) || "null") || { team: str(body.team, 80), slug, players: {} };
+  if (action === "getScout") return ok({ scout: prev });
+  if (action === "saveScout") {
+    const pk = str(body.playerKey, 80);
+    if (!pk) return fail(400, "Joueur manquant.");
+    const cur = prev.players[pk] || { tags: [], notes: [], warn: false };
+    if (Array.isArray(body.tags)) cur.tags = body.tags.slice(0, 15).map((x) => str(x, 30)).filter(Boolean);
+    if (typeof body.warn === "boolean") cur.warn = body.warn;
+    if (body.info && typeof body.info === "object") cur.info = cleanOppPlayer(body.info) || cur.info;
+    if (body.note) cur.notes = [...cur.notes, { d: new Date().toISOString().slice(0, 10), txt: str(body.note, 400), by: session.username }].slice(-50);
+    if (Number.isInteger(body.deleteNote)) cur.notes = cur.notes.filter((_, i) => i !== body.deleteNote);
+    prev.players[pk] = cur;
+    prev.team = prev.team || str(body.team, 80);
+    prev.updated = Date.now();
+    const raw = JSON.stringify(prev);
+    if (raw.length > 200 * 1024) return fail(400, "Fiche trop volumineuse.");
+    await store.set(key, raw);
+    return ok({ scout: prev });
+  }
+  return fail(400, "Action inconnue.");
+}
+
+/* ------------------------------------------------------------------ */
 /* Handler                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -1088,7 +1238,7 @@ export async function handler(event) {
     if (action === "getLineupImage") {
       const match = state.matches.find((m) => m.id === body.matchId);
       if (!match) return fail(404, "Match introuvable.");
-      if (!isStaffRole(session.role) && !lineupVisibleToPlayers(match)) return fail(403, "Composition pas encore publiée.");
+      if (!isStaffRole(session.role) && session.role !== SCORER_ROLE && !lineupVisibleToPlayers(match)) return fail(403, "Composition pas encore publiée.");
       const image = await store.get(LINEUP_IMG_PREFIX + match.id);
       return ok({ image: image || null });
     }
@@ -1097,6 +1247,12 @@ export async function handler(event) {
     }
     if (["getScoresheets", "saveScoresheet", "deleteScoresheet"].includes(action)) {
       return await handleScoresheet(store, state, session, action, body);
+    }
+    if (["listTeams", "saveTeam", "deleteTeam", "setTeamLogo"].includes(action)) {
+      return await handleTeams(store, session, action, body);
+    }
+    if (["getOppLineups", "saveOppLineup", "getScout", "listScout", "saveScout"].includes(action)) {
+      return await handleOpponents(store, session, action, body);
     }
 
     const result = await applyMutation(store, state, session, action, body);
