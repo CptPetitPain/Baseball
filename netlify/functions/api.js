@@ -940,7 +940,11 @@ async function handleMail(store, state, session, action, body, event) {
   const cfg = mailConfig();
   if (action === "mailStatus") {
     if (!isStaffRole(session.role) && !access.owner) return fail(403, "Réservé au coaching staff.");
-    return ok({ configured: !!cfg, from: cfg ? maskEmail(cfg.from) : "", name: cfg ? cfg.name : "", host: cfg ? cfg.host : "" });
+    const coaches = access.owner ? staffAccounts(state)
+      .filter((x) => x.acc.role === "owner" || Object.values(x.acc.squads || {}).some((v) => v === "coach" || v === "staff"))
+      .map((x) => ({ username: x.username, name: x.name, email: x.email, owner: x.acc.role === "owner", linked: !!x.acc.playerId,
+        squads: x.acc.role === "owner" ? ["Toutes les équipes"] : state.squads.filter((q) => ["coach", "staff"].includes((x.acc.squads || {})[q.id])).map((q) => q.name) })) : undefined;
+    return ok({ configured: !!cfg, from: cfg ? maskEmail(cfg.from) : "", name: cfg ? cfg.name : "", host: cfg ? cfg.host : "", coaches });
   }
   if (action === "sendTestMail") {
     if (!access.owner) return fail(403, "Réservé au compte propriétaire.");
@@ -954,6 +958,28 @@ async function handleMail(store, state, session, action, body, event) {
       return fail(502, auth ? "Connexion refusée par le serveur mail : vérifie SMTP_USER et le mot de passe d'application (SMTP_PASS)." : "Le mail n'a pas pu partir : " + String(e.message).slice(0, 120));
     }
     return ok({ sent: true, to: maskEmail(to) });
+  }
+  if (action === "setAccountEmail") {
+    const username = String(body.username || "");
+    const acc = state.accounts[username];
+    if (!acc) return fail(404, "Compte introuvable.");
+    if (!access.owner && username !== session.username) return fail(403, "Réservé au compte propriétaire.");
+    const email = String(body.email || "").trim().toLowerCase().slice(0, 120);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return fail(400, "Adresse mail invalide.");
+    let s2 = state;
+    if (acc.playerId) {
+      s2 = { ...s2, roster: s2.roster.map((p) => {
+        if (p.id !== acc.playerId) return p;
+        const { mail, ...rest } = p;
+        return email ? { ...rest, mail: { me: false, team: false, ...(mail || {}), email, at: new Date().toISOString().slice(0, 10) } } : rest;
+      }) };
+    } else {
+      const { email: _e, ...restAcc } = acc;
+      s2 = { ...s2, accounts: { ...s2.accounts, [username]: email ? { ...restAcc, email } : restAcc } };
+    }
+    s2 = logAction(s2, session.username, `a mis à jour l'adresse mail de "${username}"`);
+    await saveAppState(store, s2);
+    return ok({ saved: true, state: sanitize(s2, session) });
   }
   return fail(400, "Action inconnue.");
 }
@@ -1608,6 +1634,20 @@ function mvpView(doc, votes, rc, session, access, state) {
   };
 }
 
+/* Coachs et staff d'une équipe (+ propriétaires) avec leur adresse :
+   compte joueur → adresse de Mon compte ; compte sans joueur → adresse saisie dans Administration › Mails */
+function staffAccounts(state) {
+  return Object.entries(state.accounts || {}).map(([u, a]) => {
+    const p = a.playerId ? state.roster.find((r) => r.id === a.playerId) : null;
+    return { username: u, acc: a, name: p ? `${p.prenom} ${p.nom}` : a.label || u, email: (p ? p.mail && p.mail.email : a.email) || "", pid: a.playerId || "acc:" + u };
+  });
+}
+function staffRecipients(state, sq) {
+  return staffAccounts(state)
+    .filter((x) => x.email && (x.acc.role === "owner" || ["coach", "staff"].includes((x.acc.squads || {})[sq])))
+    .map((x) => ({ pid: x.pid, name: x.name, email: x.email }));
+}
+
 /* Qui reçoit le récap d'un match :
    - « Mes résultats » coché et a joué ce match → mail perso (avec le récap de l'équipe dedans)
    - sinon « Récap de l'équipe » coché et fait partie de l'équipe (habituel / renfort) ou a joué → mail équipe */
@@ -1627,6 +1667,12 @@ function recapRecipients(state, rc) {
     if (!kind) return;
     const row = rows.find((r) => r.id === p.id);
     out.push({ pid: p.id, name: `${p.prenom} ${p.nom}`, email: m.email, kind, spray: !!(kind === "me" && row && (row.spr || []).length) });
+  });
+  // Coachs / staff de l'équipe (et propriétaire) : récap de l'équipe automatiquement, même absents, sans case à cocher
+  staffRecipients(state, sq).forEach((c) => {
+    const same = out.find((x) => x.pid === c.pid || x.email === c.email);
+    if (same) { if (same.kind === "team") same.kind = "staff"; return; }
+    out.push({ ...c, kind: "staff", spray: false });
   });
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -1702,6 +1748,18 @@ async function handleScoresheet(store, state, session, action, body, event) {
     const mvp = md && md.coach ? { n: ((rc.rows || []).find((x) => x.id === md.coach.pid) || {}).n || "", why: md.coach.why || "" } : null;
     const m = renderRecapMail(rc, { player, site: body.site && /^https?:\/\/[a-z0-9.:-]+$/i.test(body.site) ? body.site : "", sprayImg: img, mvp });
     // qui le recevrait (cases cochées dans « Mails du club »)
+    if (body.sendToMe) {
+      const cfg = mailConfig();
+      if (!cfg) return fail(503, "Envoi pas encore configuré (Administration › Mails).");
+      const meAcc = staffAccounts(state).find((x) => x.username === session.username);
+      if (!meAcc || !meAcc.email) return fail(400, "Renseigne d'abord ton adresse (Mon compte › Mails du club, ou Administration › Mails).");
+      try {
+        await sendMail(makeTransport(cfg), cfg, { to: meAcc.email, subject: "[APERÇU] " + m.subject, html: img ? m.html.split(img).join("cid:frappes@dragons") : m.html, text: m.text, images: img ? [{ cid: "frappes@dragons", dataUrl: img }] : [] });
+      } catch (e) {
+        return fail(502, "Le mail n'a pas pu partir : vérifie la configuration (Administration › Mails).");
+      }
+      return ok({ sentToMe: maskEmail(meAcc.email) });
+    }
     const wants = state.roster.filter((p) => p.mail && p.mail.email && (player ? p.id === player && p.mail.me : p.mail.team)).length;
     return ok({ subject: m.subject, html: m.html, recipients: wants });
   }
@@ -2083,7 +2141,7 @@ export async function handler(event) {
     if (["listBackups", "getBackup", "restoreBackup"].includes(action)) {
       return await handleBackup(store, state, session, action, body);
     }
-    if (["mailStatus", "sendTestMail"].includes(action)) {
+    if (["mailStatus", "sendTestMail", "setAccountEmail"].includes(action)) {
       return await handleMail(store, state, session, action, body, event);
     }
     if (["getScoresheets", "saveScoresheet", "deleteScoresheet", "getRecaps", "previewRecapMail", "recapMailList", "sendRecapMails", "setCoachMvp", "voteMvp", "closeMvpVote"].includes(action)) {

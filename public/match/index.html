@@ -1357,13 +1357,14 @@ document.addEventListener('click',ev=>{
     case'note':push({k:'N',txt:v});toast('Note ajoutée');break;
     case'notetxt':{const x=document.getElementById('ntxt').value.trim();if(x)push({k:'N',txt:x});break}
     case'mailprev':{const st=replay(m);const rows=recapRows(m,st).filter(r=>r.pa>0);
-      sheet(`<h3>Mails du récap</h3><p class="muted" style="margin:0">Seuls les joueurs qui ont coché « Mails du club » dans leur compte reçoivent un mail : leur récap perso (avec leur carte des frappes) ou le récap de l’équipe.</p>
+      sheet(`<h3>Mails du récap</h3><p class="muted" style="margin:0">Les joueurs qui ont coché « Mails du club » reçoivent leur récap perso (avec leur carte des frappes) ou le récap de l’équipe. Les coachs de l’équipe le reçoivent automatiquement.</p>
       <div id="mailsend" class="card" style="padding:10px 12px"><span class="muted">Chargement des destinataires…</span></div>
       <div class="label" style="margin-top:4px">Aperçu</div>
       <select id="mailwho"><option value="">Récap de l’équipe</option>${rows.map(r=>`<option value="${esc(r.id)}">${esc(nm(r.id))} · son récap</option>`).join('')}</select>
-      <div id="mailbox" class="muted">Chargement…</div><button class="btn" data-a="close">Fermer</button>`);
+      <div id="mailbox" class="muted">Chargement…</div><button class="btn" data-a="mailme">M’envoyer cet aperçu (à moi seul)</button><button class="btn" data-a="close">Fermer</button>`);
       mailPreview(m,'');mailSendPanel(m);break}
     case'mailsend':mailSend(m,false);break;
+    case'mailme':{const who=(document.getElementById('mailwho')||{}).value||'';(async()=>{try{const img=who?await sprayPng(m,who):'';const r=await api({action:'previewRecapMail',sheetId:m.id,player:who||undefined,sprayImg:img||undefined,site:location.origin,sendToMe:true});toast('Aperçu envoyé à '+r.sentToMe)}catch(e){toast(e.status?e.message:'Pas de réseau')}})();break}
     case'mailsendok':mailSend(m,v==='force',true);break;
     case'mailresend':mailSend(m,true);break;
     case'copy':{const txt=recapText();navigator.clipboard?.writeText(txt).then(()=>toast('Récap copié'),()=>fallbackCopy(txt))||fallbackCopy(txt);break}
@@ -1403,7 +1404,7 @@ async function mailSendPanel(m){const box=document.getElementById('mailsend');if
 function drawMailList(m,progress){const box=document.getElementById('mailsend');if(!box||!mailList)return;const r=mailList;
   const hm=t=>{try{const d=new Date(t);return d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}catch(e){return''}};
   const todo=r.recipients.filter(x=>!x.sent);
-  const rows=r.recipients.map(x=>`<div class="playerline" style="padding:5px 0"><span>${esc(x.name)} <span class="muted" style="font-size:13px">· ${x.kind==='me'?'récap perso'+(x.spray?' + frappes':''):'récap équipe'}</span></span><span style="font-size:13px;${x.sent?'color:var(--ok,#3fae74)':''}">${x.sent?'✓ envoyé '+hm(x.sent):'<span class="muted">à envoyer</span>'}</span></div>`).join('');
+  const rows=r.recipients.map(x=>`<div class="playerline" style="padding:5px 0"><span>${esc(x.name)} <span class="muted" style="font-size:13px">· ${x.kind==='me'?'récap perso'+(x.spray?' + frappes':''):x.kind==='staff'?'coach · récap équipe (auto)':'récap équipe'}</span></span><span style="font-size:13px;${x.sent?'color:var(--ok,#3fae74)':''}">${x.sent?'✓ envoyé '+hm(x.sent):'<span class="muted">à envoyer</span>'}</span></div>`).join('');
   let act='';
   if(!r.configured)act=`<p class="muted" style="margin:6px 0 0">Envoi pas encore activé : le propriétaire doit configurer les mails (appli › Administration › Mails).</p>`;
   else if(progress)act=`<p style="margin:8px 0 0"><b>${esc(progress)}</b></p>`;

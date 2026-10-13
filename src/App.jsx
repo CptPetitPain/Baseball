@@ -134,7 +134,7 @@ const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
 }));
 
 const STAFF_ROLES = ["coach", "owner"];
-export const APP_VERSION = "3.1"; // garder identique à public/version.js
+export const APP_VERSION = "3.2"; // garder identique à public/version.js
 function homeScreen(role) {
   return isStaffRole(role) || role === "scorer" ? "composition" : "player";
 }
@@ -3586,7 +3586,8 @@ function RecapsSection({ token, myId, squadSel, squads }) {
   }, [token]);
   if (recaps === null) return <div className="card"><h2>Récaps des matchs</h2><div className="hint">Chargement…</div></div>;
   const multi = (squads || []).length > 1;
-  const shown = recaps.filter((rc) => !multi || !squadSel || squadSel === "all" || (rc.squad || squads[0].id) === squadSel);
+  // une équipe sélectionnée : ses récaps + ceux des matchs où j'ai joué (renfort dans l'autre équipe)
+  const shown = recaps.filter((rc) => !multi || !squadSel || squadSel === "all" || (rc.squad || squads[0].id) === squadSel || (myId && (rc.rows || []).some((r) => r.id === myId)));
   const list = all ? shown : shown.slice(0, 6);
   return (
     <div className="card">
@@ -4119,7 +4120,7 @@ function MailPanel({ token }) {
       <h2>Mails</h2>
       {!st && !err && <div className="hint">Chargement…</div>}
       {st && st.configured && (
-        <div className="mail-state on">✅ Envoi activé · expéditeur « {st.name} » &lt;{st.from}&gt; · serveur {st.host}</div>
+        <div className="mail-state on">✅ Envoi activé · expéditeur « {st.name} » &lt;{st.from}&gt;</div>
       )}
       {st && !st.configured && (
         <div className="mail-state off">
@@ -4135,6 +4136,37 @@ function MailPanel({ token }) {
       )}
       {msg && <div className="ok-msg" style={{ marginTop: 8 }}>{msg}</div>}
       {err && <div className="error" style={{ marginTop: 8 }}>{err}</div>}
+      {st && st.coaches && (
+        <div className="mail-coaches">
+          <div className="side-label" style={{ margin: "14px 0 4px" }}>Coachs : récap de leur équipe automatique</div>
+          <div className="hint" style={{ marginBottom: 8 }}>Après chaque match, les coachs et le staff de l'équipe (et le propriétaire) reçoivent le récap de l'équipe, même absents, sans rien cocher.</div>
+          {st.coaches.map((c) => (
+            <CoachMailRow key={c.username} c={c} token={token} onSaved={(email) => setSt((x) => ({ ...x, coaches: x.coaches.map((y) => (y.username === c.username ? { ...y, email } : y)) }))} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CoachMailRow({ c, token, onSaved }) {
+  const [v, setV] = useState(c.email || "");
+  const [state, setState] = useState("");
+  const dirty = v.trim().toLowerCase() !== (c.email || "");
+  async function save() {
+    setState("…");
+    try { await callApi({ action: "setAccountEmail", token, username: c.username, email: v.trim() }); onSaved(v.trim().toLowerCase()); setState("✓"); }
+    catch (e) { setState(e.message); }
+  }
+  return (
+    <div className="coach-mail">
+      <div className="coach-mail-who"><b>{c.name}</b> <span className="hint">@{c.username} · {c.squads.join(", ")}</span></div>
+      <div className="mail-test">
+        <input value={v} onChange={(e) => { setV(e.target.value); setState(""); }} placeholder={c.linked ? "adresse (aussi modifiable dans son Mon compte)" : "adresse mail du coach"} />
+        <button className="btn-ghost small" disabled={!dirty || state === "…"} onClick={save}>Enregistrer</button>
+      </div>
+      {!c.email && !dirty && <div className="hint" style={{ color: "var(--warn, #e0a82e)" }}>Pas d'adresse : ne reçoit rien pour l'instant.</div>}
+      {state && state !== "…" && <div className={state === "✓" ? "ok-msg" : "error"} style={{ marginTop: 4 }}>{state === "✓" ? "Adresse enregistrée." : state}</div>}
     </div>
   );
 }
@@ -4785,6 +4817,8 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0e1511; }
 .mail-state.on { background: rgba(63,174,116,.12); border: 1px solid rgba(63,174,116,.5); }
 .mail-state.off { background: rgba(224,168,46,.12); border: 1px solid rgba(224,168,46,.5); }
 .mail-state code { font-size: 13px; }
+.coach-mail { padding: 8px 0; border-top: 1px solid rgba(255,255,255,.06); }
+.coach-mail-who { font-size: 14px; margin-bottom: 4px; }
 .mail-test { display: flex; gap: 8px; flex-wrap: wrap; }
 .mail-test input { flex: 1 1 220px; min-width: 0; }
 .forgot-link { margin-top: 2px; }
