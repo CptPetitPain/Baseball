@@ -36,6 +36,7 @@ input,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1.5px s
 .wbtn.on{background:var(--warn-soft);border-color:var(--warn)}
 .empty{text-align:center;padding:30px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700}
+body.testmode::before{content:"MODE TEST · rien ne touche les vraies données du club";display:block;text-align:center;font:700 13px/1 system-ui,sans-serif;padding:7px 10px;color:#1a1406;background:repeating-linear-gradient(-45deg,#f2b632 0 14px,#e0a51f 14px 28px)}
 </style>
 </head>
 <body>
@@ -58,7 +59,9 @@ function toast(t){let el=document.querySelector('.toast');if(!el){el=document.cr
 async function load(){
   try{
     const s=await api({action:'getState'});
-    if(!s.session||!['coach','owner'].includes(s.session.role)){state='denied';return render()}
+    const acc=s.state&&s.state.access;
+    if(!s.session||!['coach','owner'].includes(s.session.role)||(acc&&!acc.trainer&&!Object.values(acc.squads).some(x=>x.scout))){state='denied';return render()}
+    if(s.session.space==='test')document.body.classList.add('testmode');
     const [ol,sh,sc]=await Promise.all([api({action:'getOppLineups'}),api({action:'getScoresheets'}),api({action:'listScout'})]);
     teams={};
     const T=(name)=>{const k=slugT(name);return teams[k]||(teams[k]={slug:k,name,players:{},games:[]})};

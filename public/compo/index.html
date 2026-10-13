@@ -1,4 +1,5 @@
-<!doctype html><html lang="fr"><head><meta charset=utf8><title>Dragons · Compo et changements</title><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html lang="fr"><head><meta charset=utf8><title>Dragons · Compo et changements</title><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}body.testmode::before{content:"MODE TEST · rien ne touche les vraies données du club";display:block;text-align:center;font:700 13px/1 system-ui,sans-serif;padding:7px 10px;color:#1a1406;background:repeating-linear-gradient(-45deg,#f2b632 0 14px,#e0a51f 14px 28px)}
+</style></head><body>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Graduate&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
 <style>
@@ -362,7 +363,11 @@ function render(){
   const A = after(), inAfter = n => Object.values(A.F).includes(n) || A.O.includes(n);
   const status = n => { const st = !!(posOf(n) || batOf(n)); return st ? (inAfter(n) ? 'start' : 'out') : (inAfter(n) ? 'in' : 'bench'); };
   const ST = {start:['Titulaire',0], out:['Titulaire qui sort',1], in:['Entre en jeu',2], bench:['Ne joue pas',3]};
-  const shown = n => !S.hidden.includes(n) || posOf(n) || batOf(n) || inAfter(n) || presOf(n)==='present' || presOf(n)==='reserve';
+  // V3 : pour un match du calendrier, seulement les joueurs de son équipe (habituels, renforts, appelés)
+  const outSq = n => { const mid = $('calMatch').value, m = CLUB.matches.find(x => x.id === mid), id = CLUB.byName[n];
+    if(!m || !id || (CLUB.squads||[]).length < 2) return false;
+    const mb = ((CLUB.members||{})[id]||{})[m.squad]; return !(mb || ((CLUB.callups||{})[mid]||{})[id]); };
+  const shown = n => (!S.hidden.includes(n) && !outSq(n)) || posOf(n) || batOf(n) || inAfter(n) || presOf(n)==='present' || presOf(n)==='reserve';
   const visible = S.players.filter(shown), masked = S.players.filter(n => !shown(n));
   const counts = {start:0,out:0,in:0,bench:0}; visible.forEach(n => counts[status(n)]++);
   $('legend').innerHTML = Object.keys(ST).map(k => `<span><i style="background:var(--st-${k})"></i>${ST[k][0]} <b>${counts[k]}</b></span>`).join('')
@@ -786,7 +791,7 @@ function clubNames(roster){
 function fillCal(){
   const sel = $('calMatch'), prev = sel.value || S.calId || '';
   sel.innerHTML = '<option value="">— Choisir un match du calendrier —</option>' + CLUB.matches.map(m =>
-    `<option value="${esc(m.id)}"${m.id===prev?' selected':''}>${esc(m.label)}${m.date?' · '+esc(m.date):''}${m.opponent?' · '+esc(m.opponent):''}</option>`).join('');
+    `<option value="${esc(m.id)}"${m.id===prev?' selected':''}>${(CLUB.squads||[]).length>1?'['+esc(((CLUB.squads||[]).find(q=>q.id===m.squad)||{}).name||'')+'] ':''}${esc(m.label)}${m.date?' · '+esc(m.date):''}${m.opponent?' · '+esc(m.opponent):''}</option>`).join('');
 }
 $('calMatch').addEventListener('change', e => { S.calId = e.target.value; save(); render(); });
 $('sendBtn').onclick = async () => {
@@ -837,7 +842,10 @@ async function boot(){
   if(!token()){ gate(); return; }
   try{
     const r = await api({action:'getState'});
-    if(!r.session || !['coach','owner'].includes(r.session.role)){ gate(); return; }
+    const acc = r.state.access || null, canC = sq => !acc || !!(acc.squads[sq] && acc.squads[sq].compo);
+    if(!r.session || !['coach','owner'].includes(r.session.role) || (acc && !Object.values(acc.squads).some(x => x.compo))){ gate(); return; }
+    CLUB.squads = r.state.squads || []; CLUB.members = r.state.members || {}; CLUB.callups = r.state.callups || {};
+    if(r.session.space === 'test') document.body.classList.add('testmode');
     $('who').textContent = r.session.username;
     const raw = clubNames(r.state.roster || []), byName = {};
     Object.entries(raw).forEach(([n, id]) => { byName[S.alias[n] || n] = id; });
@@ -846,9 +854,9 @@ async function boot(){
     CLUB.byName = S.clubMap = byName;
     CLUB.presence = r.state.presence || {};
     const cs = r.state.currentSeason;
-    CLUB.matches = (r.state.matches || []).filter(m => !m.cancelled && (!cs || (m.season||cs) === cs));
+    CLUB.matches = (r.state.matches || []).filter(m => !m.cancelled && (!cs || (m.season||cs) === cs) && canC(m.squad));
     S.club = Object.keys(CLUB.byName).sort((a,b) => a.localeCompare(b,'fr'));
-    S.calMatches = CLUB.matches.map(m => ({id:m.id, label:m.label, date:m.date, opponent:m.opponent}));
+    S.calMatches = CLUB.matches.map(m => ({id:m.id, label:m.label, date:m.date, opponent:m.opponent, squad:m.squad}));
   }catch(e){
     CLUB.matches = S.calMatches || []; CLUB.byName = S.clubMap || {};
     toast('Hors ligne : effectif gardé de la dernière connexion');

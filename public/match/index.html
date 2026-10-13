@@ -146,6 +146,9 @@ tr:last-child td{border-bottom:0}
 .tag.h{background:var(--accent-soft)}
 .empty{text-align:center;padding:28px 16px}
 .net{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--muted)}
+.sqchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:1px 8px;border-radius:99px;border:1.5px solid var(--sq);vertical-align:middle;white-space:nowrap}
+.sqchip i{width:8px;height:8px;border-radius:50%;background:var(--sq);display:block}
+body.testmode::before{content:"MODE TEST · rien ne touche les vraies données du club";display:block;text-align:center;font:700 13px/1 var(--f-body);padding:7px 10px;color:#1a1406;background:repeating-linear-gradient(-45deg,#f2b632 0 14px,#e0a51f 14px 28px)}
 .net i{width:9px;height:9px;border-radius:50%;background:var(--muted);display:block}
 .net.ok i{background:var(--ball)} .net.sync i{background:var(--warn)} .net.off i,.net.err i,.net.auth i{background:var(--out)}
 .ro{background:var(--warn-soft);border-radius:var(--r);padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between}
@@ -202,6 +205,7 @@ tr:last-child td{border-bottom:0}
 .lay-tl .plus{min-height:84px}
 .lay-tl .inningbar{margin-top:0}
 .lay-tl #app.narrow{max-width:980px}
+details>summary{list-style:none}details>summary::-webkit-details-marker{display:none}
 </style>
 </head>
 <body>
@@ -234,6 +238,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const P=id=>db.roster.find(p=>p.id===id)||{name:(M()&&M().names&&M().names[id])||'?',num:''};
 const SC=()=>db.role==='scorer';
 const POSL={P:'lanceur',C:'receveur','1B':'1re base','2B':'2e base','3B':'3e base',SS:'arrêt-court',LF:'champ gauche',CF:'champ centre',RF:'champ droit',DH:'DH'};
+const deP=x=>(/^[aeiouéèêh]/i.test(x||'')?'d’':'de ')+x;
 const POSORD=['P','C','1B','2B','3B','SS','LF','CF','RF','DH'];
 const APP2POS={'Lanceur':'P','Catcher':'C','Première base':'1B','Deuxième base':'2B','Troisième base':'3B','Arrêt-court':'SS','Champ gauche':'LF','Champ centre':'CF','Champ droit':'RF'}; // scoreuse : lecture seule, noms complets, saisie du line-up adverse
 const nm=id=>SC()?(P(id).full||P(id).name):P(id).name;
@@ -243,7 +248,7 @@ const M=()=>db.matches[db.current];
 /* ============ Moteur : on rejoue les actions ============ */
 function replay(m){
   const first=m.first||(m.home?'def':'att');
-  const s={do:0,dB:[false,false,false],dh:m.dh||null,catcher:m.catcher||null,df:{},first,inn:1,half:first,b:0,s:0,o:0,B:[null,null,null],bat:0,lineup:m.lineup.slice(),us:{},opp:{},st:{},log:[],over:false,lastPA:null,pitcher:m.pitcher||null,reentry:m.kind==='amical',pos:Object.assign({},m.pos||{}),pc:{},gone:[],dhEnded:false,paLog:null,obi:0,opa:[],subsNow:[],lastPlayT:0,anyPlay:false,pitched:m.pitcher?[m.pitcher]:[]};
+  const s={do:0,dB:[false,false,false],dh:m.dh||null,catcher:m.catcher||null,df:{},first,inn:1,half:first,b:0,s:0,o:0,B:[null,null,null],bat:0,lineup:m.lineup.slice(),us:{},opp:{},st:{},log:[],over:false,lastPA:null,pitcher:m.pitcher||null,reentry:m.kind==='amical',pos:Object.assign({},m.pos||{}),pc:{},gone:[],dhEnded:false,paLog:null,obi:0,opa:[],subsNow:[],lastPlayT:0,anyPlay:false,pitched:m.pitcher?[m.pitcher]:[],db:0,ds:0,pOpa:0,pKey:'1'+first};
   const S=id=>s.st[id]||(s.st[id]={cs:0,e:0,pa:0,ab:0,h:0,d:0,t:0,hr:0,r:0,rbi:0,bb:0,hbp:0,k:0,sb:0,res:[]});
   s.lineup.forEach(S);
   // postes en défense : depuis la compo (m.pos), complétés par lanceur / receveur / DH
@@ -260,9 +265,10 @@ function replay(m){
   const dPush=b=>{const B=s.dB;if(b>=3){oppRun();return}if(B[b])dPush(b+1);B[b]=true};
   const dHit=k=>{const B=s.dB;for(let j=0;j<=k;j++){if(j>0)B[j-1]=false;dPush(j)}};
   const dOut=()=>{s.do++;if(s.do>=3){L({t:'end'});endHalf()}};
-  const endHalf=()=>{s.half=s.half==='att'?'def':'att';if(s.half===s.first)s.inn++;s.b=0;s.s=0;s.o=0;s.B=[null,null,null];s.lastPA=null;s.do=0;s.dB=[false,false,false]};
+  const endHalf=()=>{s.db=0;s.ds=0;s.half=s.half==='att'?'def':'att';if(s.half===s.first)s.inn++;s.b=0;s.s=0;s.o=0;s.B=[null,null,null];s.lastPA=null;s.do=0;s.dB=[false,false,false]};
   const pa=(res,fcOut)=>{let fcRec=null;
     const id=s.lineup[s.bat],p=S(id),B=s.B,count=Math.min(s.b,3)+'-'+Math.min(s.s,2),sc=[];
+    {const j=B.indexOf(id);if(j>=0){B[j]=null;L({t:'run',id,a:'del',base:j})}}
     p.pa++;p.res.push(res);if(!['BB','HBP','SAC','CI'].includes(res))p.ab++;
     const force=()=>{if(B[0]){if(B[1]){if(B[2])sc.push(B[2]);B[2]=B[1]}B[1]=B[0]}B[0]=id};
     // Coup sûr : le frappeur passe base par base, il ne pousse que les coureurs forcés (minimum) ; les autres restent
@@ -287,12 +293,12 @@ function replay(m){
     s.lastPA=(s.o<3&&res!=='E')?id:null;
     if(s.o>=3)endHalf();
   };
-  const PLAY=['P','PA','R','DP','DHIT','DOUT','PT','WP','PB','BK','OT','DOT','DR'];
+  const PLAY=['P','PA','R','DP','DHIT','DOUT','PT','WP','PB','BK','OT','DOT','DR','DPT'];
   for(const e of m.events){
     curT=e.t||curT;
     // changements récents : affichés en jaune jusqu'au premier lancer / jeu qui suit
     if(PLAY.includes(e.k)&&!(e.k==='PT'&&e.d<0)){s.subsNow=[];s.anyPlay=true;if(e.t)s.lastPlayT=e.t}
-    else if(['SUB','PCH','DHEND','POS'].includes(e.k))s.subsNow.push(e);
+    else if(['SUB','PCH','DHEND','POS','ADD'].includes(e.k))s.subsNow.push(e);
     // Une action = une ligne : les déplacements de coureurs juste après une présence sont rattachés à sa ligne
     if(!(e.k==='R'&&['adv','score','out','err'].includes(e.a))&&!['N','OT'].includes(e.k))s.paLog=null;
     if(s.half!=='att'&&['P','PA','R','WP','PB','BK','OT'].includes(e.k))continue;
@@ -305,6 +311,7 @@ function replay(m){
         break;
       case'PA':pa(e.res,e.out);break;
       case'R':{const id=s.B[e.i];if(!id)break;
+        if(e.a==='del'){s.B[e.i]=null;L({t:'run',id,a:'del',base:e.i});break}
         const pl=s.paLog!=null&&['adv','score','out','err'].includes(e.a)?s.log[s.paLog]:null;
         if(e.a==='out'||e.a==='cs'){s.B[e.i]=null;s.o++;if(e.a==='cs')S(id).cs++;if(pl)pl.extra.push({id,a:e.a,base:e.i});L({t:'run',id,a:e.a,base:e.i,sub:!!pl});if(s.o>=3)endHalf();break}
         const to=e.a==='score'||(e.i===2&&['wp','pb'].includes(e.a))?3:e.i+1;
@@ -327,15 +334,27 @@ function replay(m){
         {const op=s.pos[old];delete s.pos[old];if(e.id!==s.pitcher){const np=e.pos||op||'';if(np&&np!=='DH')Object.keys(s.pos).forEach(k=>{if(s.pos[k]===np)delete s.pos[k]});s.pos[e.id]=np;if(np==='C')s.catcher=e.id}
         L({t:'sub',id:e.id,old,slot:e.slot,pos:s.pos[e.id]||''})}break}
       // Changement de poste (sans remplacement) : si le poste est occupé, les deux joueurs échangent
-      case'POS':{const id=e.id,from=s.pos[id]||'',to=e.pos;if(!id||!to||from===to)break;const other=Object.keys(s.pos).find(k=>k!==id&&s.pos[k]===to&&to!=='DH');
+      case'POS':{const id=e.id,from=s.pos[id]||'',to=e.pos;if(!id||!to||from===to)break;const other=e.force?null:Object.keys(s.pos).find(k=>k!==id&&s.pos[k]===to&&to!=='DH');
         s.pos[id]=to;if(other)s.pos[other]=from;if(to==='C')s.catcher=id;else if(from==='C'&&other)s.catcher=other;
         L({t:'pos',id,from,to,other:other||null});break}
+      // 9e frappeur ajouté en cours de match (match commencé à 8)
+      case'ADD':{if(!e.id||s.lineup.includes(e.id))break;s.lineup.push(e.id);S(e.id);s.gone=s.gone.filter(x=>x!==e.id);
+        if(e.pos&&e.pos!=='DH')Object.keys(s.pos).forEach(k=>{if(s.pos[k]===e.pos)delete s.pos[k]});if(e.pos)s.pos[e.id]=e.pos;if(e.pos==='C')s.catcher=e.id;
+        L({t:'add',id:e.id,slot:s.lineup.length-1,pos:e.pos||''});break}
+      // Défense : balle / strike / fausse balle du lanceur (= 1 lancer) ; 4 balles = walk, 3 strikes = strikeout
+      case'DPT':{if(s.half!=='def')break;if(s.pitcher)s.pc[s.pitcher]=(s.pc[s.pitcher]||0)+1;
+        const auto=kind=>{const id=s.pitcher;if(id){const d=s.df[id]||(s.df[id]={wp:0,pb:0,bb:0,hbp:0,k:0,bk:0});d[kind.toLowerCase()]++;L({t:'dp',id,kind,k:e.obk})}
+          s.opa.push({k:e.obk,slot:s.obi,res:kind,inn:s.inn});s.obi++;s.db=0;s.ds=0;if(kind==='K')dOut();else dForce()};
+        if(e.v==='B'){s.db++;if(s.db>=4)auto('BB')}else if(e.v==='S'){s.ds++;if(s.ds>=3)auto('K')}else if(e.v==='F'){if(s.ds<2)s.ds++}
+        break}
+      // Manche supplémentaire (7.01(b)) : un coureur est placé en 2e au début de chaque demi-manche
+      case'XR':{if(s.half!=='att'||s.B[1]||!e.id)break;s.B[1]=e.id;S(e.id);L({t:'run',id:e.id,a:'xr',base:1,to:1});break}
       case'END':L({t:'end'});endHalf();break;
       case'OPP':s.opp[e.inn]=Math.max(0,(s.opp[e.inn]||0)+e.d);break;
-      case'DOUT':if(s.half!=='def')break;if(e.d>0){s.opa.push({k:e.obk,slot:s.obi,res:'OUT',inn:s.inn});L({t:'opa',k:e.obk,res:'OUT'});s.obi++;dOut()}else s.do=Math.max(0,s.do-1);break;
+      case'DOUT':if(s.half!=='def')break;if(e.d>0){if(e.pc&&s.pitcher)s.pc[s.pitcher]=(s.pc[s.pitcher]||0)+1;s.db=0;s.ds=0;s.opa.push({k:e.obk,slot:s.obi,res:'OUT',inn:s.inn});L({t:'opa',k:e.obk,res:'OUT'});s.obi++;dOut()}else s.do=Math.max(0,s.do-1);break;
       case'OB':s.obi=Math.max(0,s.obi+(e.d||0));break;
       case'DB':if(s.half!=='def')break;s.dB[e.i]=!s.dB[e.i];break;
-      case'DHIT':if(s.half!=='def')break;s.opa.push({k:e.obk,slot:s.obi,res:e.v,inn:s.inn});L({t:'opa',k:e.obk,res:e.v});s.obi++;{const n={'1B':1,'2B':2,'3B':3,'HR':4}[e.v]||1;if(n>=4){dAdv(4);oppRun()}else dHit(n-1)}break;
+      case'DHIT':if(s.half!=='def')break;if(e.pc&&s.pitcher)s.pc[s.pitcher]=(s.pc[s.pitcher]||0)+1;s.db=0;s.ds=0;s.opa.push({k:e.obk,slot:s.obi,res:e.v,inn:s.inn});L({t:'opa',k:e.obk,res:e.v});s.obi++;{const n={'1B':1,'2B':2,'3B':3,'HR':4}[e.v]||1;if(n>=4){dAdv(4);oppRun()}else dHit(n-1)}break;
       case'DR':{if(s.half!=='def')break;const B=s.dB,i=e.i;
         if(e.a==='add'){B[i]=true;break}
         if(!B[i])break;
@@ -344,10 +363,10 @@ function replay(m){
         else if(e.a==='out'){B[i]=false;dOut()}
         else if(e.a==='del'){B[i]=false}
         break}
-      case'PCH':if(!s.pitched.includes(e.id))s.pitched.push(e.id);if(e.out&&!s.gone.includes(e.out))s.gone.push(e.out);{const prev=s.pitcher,from=s.pos[e.id]||'';s.pitcher=e.id;
+      case'PCH':if(e.id!==s.pitcher){s.pOpa=s.opa.length;s.pKey=s.inn+s.half}if(!s.pitched.includes(e.id))s.pitched.push(e.id);if(e.out&&!s.gone.includes(e.out))s.gone.push(e.out);{const prev=s.pitcher,from=s.pos[e.id]||'';s.pitcher=e.id;
         Object.keys(s.pos).forEach(k=>{if(s.pos[k]==='P'&&k!==e.id)delete s.pos[k]});s.pos[e.id]='P';
         // l'ancien lanceur encore dans l'ordre prend le poste laissé par le nouveau (ex. Eliot passe en 1re base)
-        let prevTo='';if(prev&&prev!==e.id&&s.lineup.includes(prev)&&from&&from!=='DH'){s.pos[prev]=from;prevTo=from}
+        let prevTo='';if(e.np){if(prev&&prev!==e.id&&s.pos[prev]==='P')delete s.pos[prev]}else if(prev&&prev!==e.id&&s.lineup.includes(prev)&&from&&from!=='DH'){s.pos[prev]=from;prevTo=from}
         else if(prev&&prev!==e.id&&!s.lineup.includes(prev))delete s.pos[prev];
         L({t:'pch',id:e.id,prev,from,prevTo})}
         // Un joueur déjà dans l'ordre (DH ou joueur de champ) qui va lancer : fin du DH (il frappe déjà)
@@ -358,7 +377,7 @@ function replay(m){
       case'CAT':{const from=s.pos[e.id]||'',other=Object.keys(s.pos).find(k=>k!==e.id&&s.pos[k]==='C');s.catcher=e.id;s.pos[e.id]='C';if(other){if(from)s.pos[other]=from;else delete s.pos[other]}L({t:'cat',id:e.id});break}
       case'DP':{if(e.pc&&s.pitcher)s.pc[s.pitcher]=(s.pc[s.pitcher]||0)+1;const id=e.kind==='PB'?s.catcher:s.pitcher;
         if(id){const d=s.df[id]||(s.df[id]={wp:0,pb:0,bb:0,hbp:0,k:0,bk:0});const kk=e.kind==='KD'?'k':e.kind.toLowerCase();d[kk]=(d[kk]||0)+1;L({t:'dp',id,kind:e.kind,k:e.obk})}
-        if(s.half==='def'&&['K','KD','BB','HBP'].includes(e.kind)){s.opa.push({k:e.obk,slot:s.obi,res:e.kind,inn:s.inn});s.obi++}
+        if(s.half==='def'&&['K','KD','BB','HBP'].includes(e.kind)){s.opa.push({k:e.obk,slot:s.obi,res:e.kind,inn:s.inn});s.obi++;s.db=0;s.ds=0}
         if(s.half==='def'){if(e.kind==='K')dOut();else if(e.kind==='KD'){if(s.dB[0]&&s.do<2)dOut();else dForce()}else if(e.kind==='BB'||e.kind==='HBP')dForce();else if(e.kind==='BK')dAdv(1)}
         break}
       case'DE':S(e.id).e++;L({t:'derr',id:e.id});break;
@@ -369,14 +388,17 @@ function replay(m){
 }
 const sum=o=>Object.values(o).reduce((a,b)=>a+b,0);
 function dayPitches(pid,date,exceptId){
-  let n=0;for(const m of Object.values(db.matches)){if(m.date!==date||m.id===exceptId)continue;n+=replay(m).pc[pid]||0}return n;
+  let n=0;for(const m of Object.values(db.matches)){if(m.date!==date||m.id===exceptId)continue;n+=replay(m).pc[pid]||0}
+  // matchs des autres équipes du club : seulement le nombre de lancers (santé des lanceurs partagés)
+  for(const st of db.stubs||[]){if(st.date===date&&st.id!==exceptId)n+=(st.pcs||{})[pid]||0}
+  return n;
 }
 
 /* ============ État UI ============ */
 let view=db.current&&M()?'live':'home', tab='jeu', draft=null;
 function touch(m){m.updated=Date.now();m.dirty=true;save();scheduleSync()}
 function push(e){const m=M();e.t=Date.now();
-  if(e.k==='DHIT'||(e.k==='DOUT'&&e.d>0)||(e.k==='DP'&&['K','KD','BB','HBP'].includes(e.kind))){const s0=replay(m),o=oppCur(m,s0);if(o&&s0.half==='def')e.obk=o.key}if(e.id){m.names=m.names||{};m.names[e.id]=nm(e.id)}m.events.push(e);touch(m);render()}
+  if(e.k==='DHIT'||e.k==='DPT'||(e.k==='DOUT'&&e.d>0)||(e.k==='DP'&&['K','KD','BB','HBP'].includes(e.kind))){const s0=replay(m),o=oppCur(m,s0);if(o&&s0.half==='def')e.obk=o.key}if(e.id){m.names=m.names||{};m.names[e.id]=nm(e.id)}m.events.push(e);touch(m);render()}
 function undo(){const m=M();if(!m.events.length)return;const g=m.events.pop().g;if(g)while(m.events.length&&m.events[m.events.length-1].g===g)m.events.pop();touch(m);render();toast('Dernière action annulée')}
 
 /* ============ Lien avec l'appli Dragons (serveur Netlify) ============ */
@@ -406,7 +428,10 @@ async function syncNow(){
   try{
     for(const id of db.deleted.slice()){await api({action:'deleteScoresheet',sheetId:id});db.deleted=db.deleted.filter(x=>x!==id);save()}
     for(const m of dirty){
-      const sent=m.updated;const r=await api({action:'saveScoresheet',sheet:strip(m),pub:m.live?pubOf(m):undefined});
+      const sent=m.updated;let rc=null;try{rc=recapOf(m)}catch(e){}
+      let pcs={};try{pcs=replay(m).pc}catch(e){}
+      const r=await api({action:'saveScoresheet',sheet:{...strip(m),pcs},pub:m.live?pubOf(m):undefined,recap:rc||((db.recapSent||{})[m.id]?null:undefined)});
+      if(!r.conflict){db.recapSent=db.recapSent||{};if(rc)db.recapSent[m.id]=m.updated;else delete db.recapSent[m.id]}
       const cur=db.matches[m.id];
       if(r.conflict){db.matches[m.id]=Object.assign(r.sheet,{synced:true});toast('Une autre tablette saisit ce match : sa version est reprise');render()}
       else if(cur&&cur.updated===sent){delete cur.dirty;cur.synced=true}
@@ -420,22 +445,26 @@ async function syncNow(){
 async function pull(){
   if(auth!=='ok'&&auth!=='offline')return;
   try{
-    const r=await api({action:'getScoresheets'});const srv=r.sheets||[];const ids=new Set(srv.map(x=>x.id));
+    const r=await api({action:'getScoresheets'});const all=r.sheets||[];db.stubs=all.filter(x=>x.stub);const srv=all.filter(x=>!x.stub);const ids=new Set(srv.map(x=>x.id));
     if(view==='live'||tab==='adv'){try{const o=await api({action:'getOppLineups'});const before=JSON.stringify(db.opp||{});const keep=Object.values(db.opp||{}).filter(x=>!x.updated);db.opp={};(o.lineups||[]).forEach(l=>{db.opp[l.sheetId]=l});keep.forEach(x=>{if(!db.opp[x.sheetId])db.opp[x.sheetId]=x});if(JSON.stringify(db.opp)!==before&&view==='live'&&!(document.activeElement&&['INPUT','SELECT'].includes(document.activeElement.tagName))&&!document.querySelector('.sheet'))render()}catch(e){}}
     for(const sh of srv){const loc=db.matches[sh.id];
       if(db.deleted.includes(sh.id))continue;
       if(!loc||((!loc.dirty||!mine(loc))&&(sh.updated||0)>(loc.updated||0)))db.matches[sh.id]=Object.assign(sh,{synced:true})}
     for(const m of Object.values(db.matches))if(!ids.has(m.id)&&m.synced&&!m.dirty)delete db.matches[m.id];
     if(db.current&&!db.matches[db.current]){db.current=null;view='home'}
+    /* matchs terminés avant la v2.14 : on envoie leur récap une fois */
+    {let n=0;for(const m of Object.values(db.matches))if(mine(m)&&!m.dirty&&(db.recapSent||{})[m.id]!==m.updated){try{if(replay(m).over){m.dirty=true;n++}}catch(e){}}if(n)scheduleSync(2000)}
     save();if(auth==='offline')auth='ok';
     if(net!=='sync')setNet('ok');
     if((view==='home'||(view==='live'&&M()&&!mine(M())))&&!(tab==='adv'&&document.activeElement&&['INPUT','SELECT'].includes(document.activeElement.tagName)))render();
   }catch(e){if(net!=='sync')setNet(netErr(e))}
 }
 /* ---- Version publique (page /live) : prénom + numéro, rien de privé ---- */
-function lab(id){const p=P(id);return p.num?`${p.name} #${p.num}`:p.name}
+/* Live public : prénom seulement avec l'accord du joueur (ou d'un parent pour un mineur), sinon le numéro */
+let LAB_ALL=false; // récap interne (comptes du club) : prénoms de tout le monde
+function lab(id){const p=P(id);if(!p.liveOk&&!LAB_ALL)return p.num?`#${p.num}`:'Un Dragon';return p.num?`${p.name} #${p.num}`:p.name}
 const PUBK={'KD':'strikeout (3e strike échappé)','CI':'interférence du receveur','1B':'simple','2B':'double','3B':'triple','HR':'home run','BB':'walk','HBP':'hit by pitch','E':'on error','FC':'fielder’s choice','K':'strikeout','GO':'ground out','FO':'fly out','SAC':'sacrifice'};
-function pubOf(m){
+function pubOf(m,all){
   const s=replay(m),feed=[];
   const OA=oppAll(m),oT=shortT(((db.opp||{})[m.id]||{}).team||m.opp);
   s.log.forEach((e,i)=>{
@@ -443,7 +472,9 @@ function pubOf(m){
     if(e.t==='opa'){const p=OA.find(x=>x.key===e.k),w=oppPub(p);feed.push({n,k:'OPA',txt:`${oT} · ${w?w+' · ':''}${{'1B':'simple','2B':'double','3B':'triple','HR':'home run','OUT':'retiré'}[e.res]||e.res}`,inn:e.inn})}
     else if(e.t==='pa'){
       feed.push({n,k:e.res,txt:`${lab(e.id)} · ${PUBK[e.res]}`,who:lab(e.id),inn:e.inn});
-      (e.runs||[]).forEach((r,j)=>feed.push({n:n+1+j,k:'RUN',txt:r===e.id?`Point · ${lab(r)} marque`:`Point · ${lab(r)} marque sur le ${PUBK[e.res]} de ${nm(e.id)}`,who:lab(r),inn:e.inn}));
+      (e.runs||[]).forEach((r,j)=>feed.push({n:n+1+j,k:'RUN',txt:r===e.id?`Point · ${lab(r)} marque`:`Point · ${lab(r)} marque sur le ${PUBK[e.res]} de ${lab(e.id)}`,who:lab(r),inn:e.inn}));
+    }else if(e.t==='run'&&e.a==='del'){/* correction de saisie : rien sur le live */
+    }else if(e.t==='run'&&e.a==='xr'){feed.push({n,k:'INFO',txt:`Manche supplémentaire · ${lab(e.id)} part de la 2e base`,inn:e.inn})
     }else if(e.t==='run'){
       if(e.a==='sb')feed.push({n,k:e.to>=3?'RUN':'SB',txt:e.to>=3?`Point · ${lab(e.id)} steal home`:`${lab(e.id)} · stolen base (${['','2e','3e'][e.to]})`,who:lab(e.id),to:e.to,inn:e.inn});
       else if(e.a==='cs')feed.push({n,k:'OUT',txt:`${lab(e.id)} · retiré en tentative de vol`,inn:e.inn});
@@ -455,8 +486,9 @@ function pubOf(m){
       e.moved.forEach(([id,to],j)=>feed.push({n:n+1+j,k:to>=3?'RUN':'ADV',txt:to>=3?`Point · ${lab(id)} marque`:`${lab(id)} · avance en ${['','2e','3e'][to]}`,who:lab(id),inn:e.inn}));
     }else if(e.t==='dp'&&(e.kind==='K'||e.kind==='KD'))feed.push({n,k:'KDEF',txt:`Strikeout par ${lab(e.id)}`,who:lab(e.id),inn:e.inn});
     else if(e.t==='pch')feed.push({n,k:'INFO',txt:`Dragons · nouveau lanceur : ${lab(e.id)}${e.prevTo&&e.prev?` · ${lab(e.prev)} passe en ${POSL[e.prevTo]}`:''}`,inn:e.inn});
+    else if(e.t==='add')feed.push({n,k:'INFO',txt:`Dragons · ${lab(e.id)} entre dans le match${e.pos&&e.pos!=='DH'?' en '+POSL[e.pos]:''}`,inn:e.inn});
     else if(e.t==='sub')feed.push({n,k:'INFO',txt:`Dragons · ${lab(e.id)} remplace ${lab(e.old)}${e.pos&&e.pos!=='DH'?' en '+POSL[e.pos]:e.pos==='DH'?' comme DH':''}`,inn:e.inn});
-    else if(e.t==='pos')feed.push({n,k:'INFO',txt:`Dragons · ${lab(e.id)} passe ${e.from?'de '+POSL[e.from]+' ':''}en ${POSL[e.to]}${e.other?` · ${lab(e.other)} ${e.from?'en '+POSL[e.from]:'sort du terrain'}`:''}`,inn:e.inn});
+    else if(e.t==='pos')feed.push({n,k:'INFO',txt:`Dragons · ${lab(e.id)} passe ${e.from?deP(POSL[e.from])+' ':''}en ${POSL[e.to]}${e.other?` · ${lab(e.other)} ${e.from?'en '+POSL[e.from]:'sort du terrain'}`:''}`,inn:e.inn});
   });
   {const l=(db.opp||{})[m.id];(l&&l.subs||[]).forEach((x,j)=>{let idx=-1;s.log.forEach((e,i)=>{if((e.tt||0)<=(x.at||0))idx=i});
     feed.push({n:Math.max(0,idx)*8+7,k:'INFO',inn:x.inn,txt:x.kind==='pos'?`${oT} · ${oppPub(x.who)||'un joueur'} passe en ${POSL[x.to]||x.to}`:`${oT} · ${x.slot==='P'||x.pos==='P'?'nouveau lanceur : ':''}${oppPub(x.in)||'remplaçant'} remplace ${oppPub(x.out)||'un joueur'}`})})}
@@ -465,24 +497,66 @@ function pubOf(m){
   const att=s.half==='att'&&!s.over;
   const rows=s.over?recapRows(m,s).filter(r=>r.pa>0).map(r=>[lab(r.id),r.h,r.ab,r.r,r.rbi,r.hr,r.bb,r.sb]):[];
   return {opp:m.opp,date:m.date,home:!!m.home,first:s.first,over:s.over,inn:dispInn(s),half:s.half,att,outs:s.o,
-    count:att&&showCount()?[s.b,s.s]:null,
+    count:att&&showCount()?[s.b,s.s]:null,dCount:!att&&!s.over&&(s.db||s.ds)?[s.db,s.ds]:null,
     bases:att?s.B.map(x=>x?lab(x):null):[null,null,null],
     batter:att?lab(id):null,batterLine:att?(st.pa?`${st.h} sur ${st.ab}${extra.length?', '+extra.join(', '):''}`:'1re présence'):null,
     next:att?lab(s.lineup[(s.bat+1)%s.lineup.length]):null,
     pitcher:!att&&s.pitcher?lab(s.pitcher):null,oppBatter:!att&&!s.over?oppPub(oppCur(m,s)):null,dOuts:!att?s.do:0,dBases:!att?s.dB.map(Boolean):[false,false,false],
-    us:s.us,them:s.opp,feed:feed.slice(-30).reverse(),rows};
+    us:s.us,them:s.opp,feed:(all?feed:feed.slice(-30)).reverse(),rows};
+}
+/* Récap figé d'un match terminé : lisible par tous les comptes du club (onglet Historique de l'appli).
+   Pas de notes, pas de scouting, adversaires en prénom + numéro seulement. */
+function recapOf(m){
+  const s=replay(m);if(!s.over)return null;
+  const nmR=id=>{const p=db.roster.find(x=>x.id===id);return p?p.name:((m.names||{})[id]||'?')};
+  const numR=id=>{const p=db.roster.find(x=>x.id===id);return p?String(p.num||''):''};
+  let feed=[];LAB_ALL=true;try{feed=pubOf(m,true).feed.slice().reverse().map(f=>({k:f.k,inn:f.inn,txt:f.txt}))}finally{LAB_ALL=false}
+  const K=['pa','ab','h','d','t','hr','r','rbi','bb','hbp','k','sb','cs','e'];
+  /* carte des frappes de chaque joueur : [x, y, résultat, type de balle, poste qui la récupère] */
+  const spr={};if(window.DragonsSpray)m.events.forEach(e=>{if(e.k!=='PA'||!e.loc||!e.b)return;const L=DragonsSpray.fix(e.loc,e.res);(spr[e.b]=spr[e.b]||[]).push([L[0],L[1],e.res,e.bt||'',DragonsSpray.zone(L).pos])});
+  return {v:1,opp:m.opp,date:m.date,home:!!m.home,kind:m.kind||'saison',first:s.first,inns:dispInn(s),us:s.us,them:s.opp,
+    rows:recapRows(m,s).map(r=>{const o={id:r.id,n:nmR(r.id),num:numR(r.id),res:(r.res||[]).slice(0,12)};if(spr[r.id])o.spr=spr[r.id].slice(0,12);K.forEach(k=>o[k]=r[k]||0);return o}),
+    pitchers:Object.entries(s.pc).filter(([,n])=>n>0).map(([id,n])=>({id,n:nmR(id),pc:n})),
+    feed:feed.slice(-250)};
 }
 function applyClub(st){
   db.roster=mapRoster(st.roster||[]);
+  if(st.presence)db.presence=st.presence;if(st.positions)db.positions=st.positions;
+  // V3 : équipes du club, droits par équipe, habituels / renforts, appels
+  db.squads=st.squads||[];db.access=st.access||null;db.members=st.members||{};db.callups=st.callups||{};
   db.claimed=Object.values(st.accounts||{}).map(a=>a.playerId);
 }
 /* joueurs visibles dans les listes (les masqués restent dans les matchs déjà saisis) */
 const visRoster=()=>db.roster.filter(p=>!(db.hidden||[]).includes(p.id));
+/* Listes plus courtes : seulement les joueurs « Présent » au match (onglet Suivi de l'appli), lanceurs d'abord.
+   « Voir tout l'effectif » / « Autre joueur » pour sortir du filtre. */
+let showAll=false,showAllP=false;
+const isPitcherPos=id=>{const p=(db.positions||{})[id]||{};return[p.pos1,p.pos2,p.pos3].includes('Lanceur')};
+function presentIds(link){if(!link)return null;const ids=Object.keys(db.presence||{}).filter(id=>((db.presence||{})[id]||{})[link]==='present');return ids.length?ids:null}
+/* V3 · équipes */
+const SQS=()=>db.squads||[];
+const multiSq=()=>SQS().length>1;
+const sqName=id=>(SQS().find(q=>q.id===id)||{}).name||'';
+const sqColor=id=>(SQS().find(q=>q.id===id)||{}).color||'var(--accent)';
+const canSq=(sq,w)=>!!(db.access&&db.access.squads&&db.access.squads[sq]&&db.access.squads[sq][w]);
+const sheetSquads=()=>SQS().filter(q=>!db.access||canSq(q.id,'sheet'));
+const sqChip=id=>multiSq()&&id?`<span class="sqchip" style="--sq:${sqColor(id)}"><i></i>${esc(sqName(id))}</span>`:'';
+const curSquad=()=>{const m=M();return view==='setup'&&draft?draft.squad:m&&m.squad};
+// joueurs de l'équipe : habituels, renforts et appelés pour ce match
+function squadIds(sq,link){if(!sq||!multiSq())return null;const ids=db.roster.filter(p=>{const mb=(db.members[p.id]||{})[sq];return mb==='reg'||mb==='renf'||(link&&((db.callups||{})[link]||{})[p.id])}).map(p=>p.id);return ids.length?ids:null}
+function pool(link,keep){const pr=presentIds(link),sq=squadIds(curSquad(),link);const r=visRoster();if(showAll)return r;
+  if(pr)return r.filter(p=>pr.includes(p.id)||(keep||[]).includes(p.id));
+  if(sq)return r.filter(p=>sq.includes(p.id)||(keep||[]).includes(p.id));return r}
+function poolNote(link){const pr=presentIds(link),sq=squadIds(curSquad(),link);
+  if(!pr&&!sq){if(!link)return'';return`<div class="muted" style="font-size:13px">Aucune présence notée pour ce match dans l’onglet Suivi : tout l’effectif est affiché.</div>`}
+  const lab=pr?`Présents au match (onglet Suivi) · ${pr.length}`:`Joueurs de l’${esc(sqName(curSquad()))} (habituels et renforts) · ${sq.length}`;
+  return`<div class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:8px"><span class="muted" style="font-size:13px">${showAll?'Tout l’effectif':lab}</span><button class="btn small ghost" data-a="allros">${showAll?(pr?'Seulement les présents':'Seulement l’équipe'):'Voir tout l’effectif'}</button></div>`}
+const curLink=()=>{const m=M();return view==='setup'&&draft?draft.link:m&&m.linkedMatchId}
 function mapRoster(r){
   const key=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); // Francois = François
   const cnt={};r.forEach(p=>{const k=key((p.prenom||'').trim());if(k)cnt[k]=(cnt[k]||0)+1});
   return r.map(p=>{const pr=(p.prenom||'').trim(),no=(p.nom||'').trim();let name=pr||no||'?';
-    if(pr&&cnt[key(pr)]>1&&no)name=pr+' '+no[0]+'.';return{id:p.id,name,num:p.numero||'',full:(pr+' '+no).trim()}})
+    if(pr&&cnt[key(pr)]>1&&no)name=pr+' '+no[0]+'.';return{id:p.id,name,num:p.numero||'',full:(pr+' '+no).trim(),liveOk:!!(p.live&&p.live.ok)}})
     .sort((a,b)=>a.name.localeCompare(b.name,'fr'));
 }
 async function boot(){
@@ -492,9 +566,9 @@ async function boot(){
     const r=await api({action:'getState'});
     if(!r.session){auth='none'}
     else{
-      db.role=r.session.role;db.user=r.session.username;
+      db.role=r.session.role;db.user=r.session.username;db.space=r.session.space||'';
       applyClub(r.state);
-      db.cal=(r.state.matches||[]).filter(m=>!m.cancelled).map(m=>({id:m.id,label:m.label,date:m.date,opp:m.opponent,loc:m.location,season:m.season}));
+      db.cal=(r.state.matches||[]).filter(m=>!m.cancelled).map(m=>({id:m.id,label:m.label,date:m.date,opp:m.opponent,loc:m.location,season:m.season,squad:m.squad}));
       db.lineups=r.state.lineups||{};save();
       auth=isStaff(db.role)||db.role==='scorer'?'ok':'player';
     }
@@ -509,7 +583,7 @@ addEventListener('online',()=>{syncNow();pull()});
 
 let tt;function toast(t){clearTimeout(tt);let el=document.querySelector('.toast');if(!el){el=document.createElement('div');el.className='toast';document.body.appendChild(el)}el.textContent=t;tt=setTimeout(()=>el.remove(),1800)}
 function sheet(html,cls){document.getElementById('layer').innerHTML=`<div class="sheet-bg" data-a="close"><div class="sheet ${cls||''}" role="dialog">${html}</div></div>`}
-function close(){document.getElementById('layer').innerHTML=''}
+function close(){document.getElementById('layer').innerHTML='';window.__reopen=null;showAll=false;showAllP=false}
 /* Carte des frappes : après une balle en jeu, on touche le terrain là où elle est partie */
 const SPRAY_RES=['1B','2B','3B','HR','E','FC','GO','FO','SAC'];
 const sprMode=m=>m.spray===true?'all':(m.spray||'');
@@ -540,6 +614,7 @@ document.addEventListener('fullscreenchange',()=>render());
 function layBtn(){const v=db.settings.layout||'auto';return`<button class="btn small" data-a="laysheet">▭ ${LAYS[v]}${v==='auto'?' · '+LAYS[layout()].toLowerCase():''}</button>`}
 function render(){
   applyLayout();
+  document.body.classList.toggle('testmode',db.space==='test');
   const app=document.getElementById('app');
   app.classList.toggle('narrow',view!=='live');
   if(auth!=='ok'&&auth!=='offline'){app.innerHTML=gateV();return}
@@ -550,14 +625,18 @@ function render(){
   wake();
 }
 
+let homeFinOpen=false;
 function homeV(){
   const ms=Object.values(db.matches).sort((a,b)=>(b.date+b.created).localeCompare(a.date+a.created));
   return `<div class="top"><a class="btn small ghost" style="display:inline-flex;align-items:center;text-decoration:none" href="/">‹ Appli</a><h1>Feuille de match</h1>${SC()?'<span></span>':'<button class="btn small" data-a="go" data-v="roster">Réglages</button>'}</div>
   <div class="stack">${SC()?'<div class="alert warn" style="font-weight:400">Compte <b>scoreuse</b> : tu suis les matchs en direct (lecture seule) et tu remplis le <b>line-up adverse</b> (onglet « Adverse »).</div>':''}
     <div class="row" style="justify-content:space-between">${netV()}<span class="muted" style="font-size:13px">${esc(db.user||'')}</span></div>
-    ${SC()?'':`<button class="btn primary" data-a="newmatch" ${db.roster.length?'':'disabled'}>Nouveau match</button>`}
+    ${SC()||!sheetSquads().length?'':`<button class="btn primary" data-a="newmatch" ${db.roster.length?'':'disabled'}>Nouveau match</button>`}
     ${ms.length?'':`<div class="card empty"><p class="muted" style="margin:0">Aucune feuille pour l’instant. Les matchs saisis sur n’importe quelle tablette du staff apparaissent ici.</p></div>`}
-    ${ms.length?`<div class="label">Matchs</div>`+ms.map(m=>{const s=replay(m);return`<div class="row" style="flex-wrap:nowrap;gap:6px"><button class="item" style="flex:1;min-width:0" data-a="open" data-v="${m.id}"><div class="grow"><b>${esc(m.opp)}</b> <span class="muted">· ${m.home?'Domicile':'Extérieur'}</span><div class="muted" style="font-size:14px">${fmtDate(m.date)}${s.over?' · terminé':' · en cours'}${mine(m)?'':' · autre tablette'}${m.dirty?' · non envoyé':''}</div></div><div class="num" style="font-size:26px">${sum(s.us)}–${sum(s.opp)}</div></button>${SC()?'':`<button class="btn small" style="min-height:64px;color:var(--out)" data-a="delm" data-v="${m.id}" aria-label="Supprimer le match contre ${esc(m.opp)}">Suppr.</button>`}</div>`}).join(''):''}
+    ${(()=>{const row=m=>{const s=replay(m);return`<div class="row" style="flex-wrap:nowrap;gap:6px"><button class="item" style="flex:1;min-width:0" data-a="open" data-v="${m.id}"><div class="grow"><b>${esc(m.opp)}</b> ${sqChip(m.squad)} <span class="muted">· ${m.home?'Domicile':'Extérieur'}</span><div class="muted" style="font-size:14px">${fmtDate(m.date)}${s.over?' · terminé':' · en cours'}${mine(m)?'':' · autre tablette'}${m.dirty?' · non envoyé':''}</div></div><div class="num" style="font-size:26px">${sum(s.us)}–${sum(s.opp)}</div></button>${SC()?'':`<button class="btn small" style="min-height:64px;color:var(--out)" data-a="delm" data-v="${m.id}" aria-label="Supprimer le match contre ${esc(m.opp)}">Suppr.</button>`}</div>`};
+      const fin=ms.filter(m=>{try{return replay(m).over}catch(e){return false}}),cur=ms.filter(m=>!fin.includes(m));
+      return (cur.length?`<div class="label">Matchs en cours / à venir</div>`+cur.map(row).join(''):(ms.length?`<div class="card empty"><p class="muted" style="margin:0">Aucun match en cours.</p></div>`:''))
+        +(fin.length?`<details class="card" style="padding:10px 12px;list-style:none"${homeFinOpen?' open':''} ontoggle="homeFinOpen=this.open;this.querySelector('summary>span:last-child').textContent=this.open?'▴':'▾'"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;gap:10px"><span style="flex:1"><b>Matchs terminés (${fin.length})</b><span class="muted" style="display:block;font-size:13px">Récap visible par les joueurs dans l’appli › Historique</span></span><span class="muted">${homeFinOpen?'▴':'▾'}</span></summary><div class="stack" style="margin-top:8px">${fin.map(row).join('')}</div></details>`:'')})()}
     ${SC()?'':`<div class="label" style="margin-top:8px">Sauvegarde</div>
     <div class="row"><button class="btn small" data-a="export">Exporter (fichier)</button><label class="btn small" style="display:inline-flex;align-items:center">Importer<input id="imp" type="file" accept=".json,application/json" hidden></label></div>
     <p class="muted" style="font-size:13px;margin:0">Chaque action est gardée sur cet appareil puis envoyée au serveur du club dès qu’il y a du réseau. Tout le staff connecté voit les matchs.</p>`}
@@ -594,22 +673,29 @@ function setupV(){
   const d=draft;
   return `<div class="top"><button class="btn small ghost" data-a="go" data-v="home">‹ Annuler</button><h1>Nouveau match</h1><span></span></div>
   <div class="stack">
-    ${db.cal.length?`<label>Match du calendrier<select id="link"><option value="">— Aucun (match amical…) —</option>${db.cal.map(c=>`<option value="${esc(c.id)}" ${d.link===c.id?'selected':''}>${esc(c.label)}${c.date?' · '+esc(c.date):''}${c.opp?' · '+esc(c.opp):''}</option>`).join('')}</select></label>
+    ${multiSq()&&sheetSquads().length>1?`<div class="label">Équipe</div><div class="row" style="flex-wrap:nowrap">${sheetSquads().map(q=>`<button class="btn ${d.squad===q.id?'primary':''}" style="flex:1" data-a="setsq" data-v="${esc(q.id)}">${esc(q.name)}</button>`).join('')}</div>`:multiSq()?`<div class="muted" style="font-size:14px">Équipe : ${sqChip(d.squad)}</div>`:''}
+    ${db.cal.filter(c=>!multiSq()||c.squad===d.squad).length?`<label>Match du calendrier<select id="link"><option value="">— Aucun (match amical…) —</option>${db.cal.filter(c=>!multiSq()||c.squad===d.squad).map(c=>`<option value="${esc(c.id)}" ${d.link===c.id?'selected':''}>${esc(c.label)}${c.date?' · '+esc(c.date):''}${c.opp?' · '+esc(c.opp):''}</option>`).join('')}</select></label>
     ${d.link?`<p class="muted" style="margin:-4px 0 0;font-size:14px">Adversaire, lieu, ordre des frappeurs, pitcher et catcher repris de la Composition. Le score pourra être envoyé dans Résultats.</p>`:''}`:''}
     <label>Adversaire<input id="opp" value="${esc(d.opp)}" placeholder="Ex. Lions de Lille" list="teamlist" autocomplete="off"></label><datalist id="teamlist">${((window.DragonsLogos&&DragonsLogos.TEAMS)||[]).map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist>
     <label>Date<input id="date" type="date" value="${d.date}"></label>
     <div class="label">Type de match</div>
     <div class="row" style="flex-wrap:nowrap"><button class="btn ${d.kind!=='amical'?'primary':''}" style="flex:1" data-a="kind" data-v="saison">Saison<div style="font-size:12px;font-weight:400">règles officielles · pas de réentrée</div></button><button class="btn ${d.kind==='amical'?'primary':''}" style="flex:1" data-a="kind" data-v="amical">Amical / tournoi<div style="font-size:12px;font-weight:400">réentrée autorisée</div></button></div>
+    <div class="label">Durée et règle de l’écart (mercy rule)</div>
+    <div class="row" style="flex-wrap:nowrap">${[7,9].map(n=>`<button class="btn ${(+d.inns||7)===n?'primary':''}" style="flex:1" data-a="inns" data-v="${n}">${n} manches</button>`).join('')}</div>
+    ${(()=>{const rules=d.mercy||(d.kind==='amical'?[]:MERCY_PRESET[+d.inns||7]);return `<div class="card stack" style="padding:10px 12px">${rules.length?rules.map((r,i)=>`<div class="row" style="flex-wrap:nowrap;align-items:center;gap:6px;font-size:15px">Arrêt à <input data-mr="${i}:runs" value="${r.runs}" inputmode="numeric" style="width:56px;padding:8px;text-align:center"> points d’écart après <input data-mr="${i}:after" value="${r.after}" inputmode="numeric" style="width:48px;padding:8px;text-align:center"> manches</div>`).join(''):'<div class="muted" style="font-size:14px">Pas de règle de l’écart (amical).</div>'}
+      <div class="row" style="gap:6px"><button class="btn small ghost" data-a="mercytog">${rules.length?'Désactiver':'Activer'}</button><span class="muted" style="font-size:12px;align-self:center">RG art. 210.3 (régional, 19 ans et +) : programme double en 7 manches → 10 pts après 5 ; programme simple en 9 manches → 15 pts après 5, 10 après 7. Jeunes 18U/15U : 10 pts après 5 ; 12U (6 manches) : 10 pts après 4.</span></div></div>`})()}
     <div class="label">Saisie des frappes</div>
     <div class="row" style="flex-wrap:nowrap">${[['','Désactivée','résultat seulement'],['us','Dragons','nos frappes'],['all','Dragons + adversaires','les deux équipes']].map(([k,l,s])=>`<button class="btn ${(d.spray||'')===k?'primary':''}" style="flex:1;padding:0 8px" data-a="spraymode" data-v="${k}">${l}<div style="font-size:12px;font-weight:400">${s}</div></button>`).join('')}</div>
     <div class="row" style="flex-wrap:nowrap"><button class="btn ${d.home?'primary':''}" style="flex:1" data-a="home" data-v="1">Domicile · Ronchin</button><button class="btn ${!d.home?'primary':''}" style="flex:1" data-a="home" data-v="0">Extérieur</button></div>
     <div class="label">Pitcher partant</div>
-    <div class="chips">${visRoster().map(p=>`<button class="chip ${d.pitcher===p.id?'sel':''}" data-a="spitch" data-v="${p.id}">${esc(p.name)}</button>`).join('')}</div>
+    ${(()=>{const all=pool(d.link,[d.pitcher,...d.lineup].filter(Boolean)),ps=all.filter(p=>isPitcherPos(p.id)||p.id===d.pitcher),list=showAllP||!ps.length?all:ps;
+      return`<div class="chips">${list.map(p=>`<button class="chip ${d.pitcher===p.id?'sel':''}" data-a="spitch" data-v="${p.id}">${esc(p.name)}</button>`).join('')}${ps.length&&ps.length<all.length?`<button class="chip" style="border-style:dashed" data-a="allp">${showAllP?'Seulement les lanceurs':'Autre joueur…'}</button>`:''}</div>${ps.length?'':'<div class="muted" style="font-size:13px">Personne n’a « Lanceur » dans ses postes : tout le monde est proposé.</div>'}`})()}
     ${d.pitcher?`<div class="row" style="flex-wrap:nowrap"><button class="btn ${!d.dhOn?'primary':''}" style="flex:1" data-a="dhon" data-v="0">Le pitcher frappe</button><button class="btn ${d.dhOn?'primary':''}" style="flex:1" data-a="dhon" data-v="1">DH pour le pitcher</button></div>
     ${d.dhOn?`<div class="alert ${d.dh?'':'warn'}">${d.dh?`${esc(nm(d.dh))} frappe à la place de ${esc(nm(d.pitcher))}.`:`Ajoute ton DH dans l’ordre puis touche « DH » à côté de son nom. ${esc(nm(d.pitcher))} ne frappe pas.`}</div>`:''}`:''}
     <div class="label">Ordre des frappeurs · touche les joueurs dans l’ordre</div>
     <div class="list">${d.lineup.map((id,i)=>`<div class="item sel"><span class="n">${i+1}</span><span class="grow"><b>${esc(nm(id))}</b>${d.dhOn&&d.dh===id?dhTag:''}${P(id).num?` <span class="muted">#${esc(P(id).num)}</span>`:''}</span>${d.dhOn?`<button class="btn small ${d.dh===id?'primary':'ghost'}" data-a="sdh" data-v="${id}">DH</button>`:''}<button class="btn small ghost" data-a="lup" data-v="${i}" ${i?'':'disabled'} aria-label="Monter">↑</button><button class="btn small ghost" data-a="lrm" data-v="${i}" aria-label="Retirer">✕</button></div>`).join('')||'<p class="muted">Personne pour l’instant.</p>'}</div>
-    <div class="chips">${visRoster().filter(p=>!d.lineup.includes(p.id)&&!(d.dhOn&&p.id===d.pitcher)).map(p=>`<button class="chip" data-a="ladd" data-v="${p.id}">${esc(p.num?p.num+' · ':'')}${esc(p.name)}</button>`).join('')}</div>
+    ${poolNote(d.link)}
+    <div class="chips">${pool(d.link,[d.pitcher].filter(Boolean)).filter(p=>!d.lineup.includes(p.id)&&!(d.dhOn&&p.id===d.pitcher)).map(p=>`<button class="chip" data-a="ladd" data-v="${p.id}">${esc(p.num?p.num+' · ':'')}${esc(p.name)}</button>`).join('')}</div>
     <div class="row" style="flex-wrap:nowrap"><input id="qadd" placeholder="Joueur pas inscrit : Prénom Nom" autocomplete="off"><button class="btn small" data-a="qadd">Ajouter</button></div>
     <button class="btn primary" data-a="start" ${d.lineup.length&&(!d.dhOn||d.dh)?'':'disabled'}>Commencer le match</button>
   </div>`;
@@ -647,6 +733,34 @@ function navV(){
   return `<nav class="bar"><div class="in" style="grid-template-columns:repeat(${t.length},1fr)">${t.map(([k,l])=>`<button class="${tab===k?'on':''}" data-a="tab" data-v="${k}"><svg viewBox="0 0 24 24">${ic[k]}</svg>${l}</button>`).join('')}</div></nav>`;
 }
 
+/* Durée réglementaire et règle de l'écart (mercy rule) : réglables par match.
+   RG FFBS art. 210.3 (régional/départemental, 19+) : 7 manches en programme double → 10 pts après 5 manches complètes ;
+   9 manches en programme simple → 15 pts après 5, 10 pts après 7. */
+const MERCY_PRESET={7:[{runs:10,after:5}],9:[{runs:15,after:5},{runs:10,after:7}]};
+const regInn=m=>+m.inns||7;
+const mercyRules=m=>Array.isArray(m.mercy)?m.mercy:(m.kind==='amical'?[]:MERCY_PRESET[regInn(m)]||MERCY_PRESET[7]);
+function mercyCheck(m,s){
+  if(s.over)return null;const d=sum(s.us)-sum(s.opp),ad=Math.abs(d);if(!ad)return null;
+  const home=!!m.home,bottom=s.half!==s.first;               // on est dans la 2e moitié de la manche s.inn
+  const done=s.inn-1;                                         // manches complètes
+  const homeLead=home?d:-d;
+  for(const r of mercyRules(m)){
+    if(!r||!r.runs||!r.after)continue;
+    if(done>=r.after&&ad>=r.runs)return{r,d};
+    if(bottom&&s.inn>=r.after&&homeLead>=r.runs)return{r,d}; // l'équipe qui reçoit mène : inutile de finir la manche
+  }
+  return null;
+}
+const PEP=['Une manche à la fois : on met la balle en jeu, on court fort.','Rappelle-leur un objectif simple : 1 coureur sur base, puis 1 point.','Encourage le banc : de la voix dans le dugout, ça change tout.','Défense solide, pas d’erreur : on coupe leur élan et on revient.','On joue pour le plaisir et pour l’équipe : tête haute, on y croit !'];
+function gameAlertsV(m,s){
+  let h='';const mc=mercyCheck(m,s);
+  if(mc){const we=mc.d>0;h+=`<div class="alert ${we?'':'bad'}" style="display:block;border-color:${we?'var(--accent)':'var(--out)'}"><b>Règle de l’écart (mercy rule)</b> : ${Math.abs(mc.d)} points d’écart après ${mc.r.after} manches (seuil ${mc.r.runs}). La rencontre s’arrête${we?' : victoire des Dragons':''}.${SC()?'':`<div class="row" style="margin-top:8px"><button class="btn small primary" data-a="fin">Terminer le match</button></div>`}</div>`;return h}
+  if(SC())return h;
+  const d=sum(s.us)-sum(s.opp);
+  if(d<0&&s.anyPlay){const r=mercyRules(m).filter(x=>x&&x.runs).sort((a,b)=>a.runs-b.runs)[0],near=r&&-d>=r.runs-3&&s.inn>=r.after-1;
+    h+=`<div class="alert warn" style="display:block;font-size:14px">💪 <b>On est menés de ${-d}</b> · pense à remotiver les troupes. <span class="muted" style="color:inherit">${PEP[(s.inn+(s.half==='att'?0:1))%PEP.length]}</span>${near?`<div style="margin-top:4px"><b>Attention</b> : à ${r.runs} points d’écart après ${r.after} manches, la rencontre s’arrête (mercy rule).</div>`:''}</div>`}
+  return h;
+}
 function inningBar(s){
   const att=s.half==='att';
   return `<div class="inningbar"><span class="pill ${att?'':'def'}">${att?'Attaque':'Défense'} · ${s.half===s.first?'Top':'Bottom'} ${s.inn}</span>
@@ -656,13 +770,18 @@ function attV(m,s){
   const id=s.lineup[s.bat],st=s.st[id];
   const line=st.res.length?st.res.map(r=>RES[r][0]).join(', '):'1re présence';
   const next=[1,2].map(k=>s.lineup[(s.bat+k)%s.lineup.length]).map(nm).join(' · ');
-  return `<div class="cols"><div class="col">${inningBar(s)}${subsNowV(m,s)}
+  return `<div class="cols"><div class="col">${inningBar(s)}${gameAlertsV(m,s)}${subsNowV(m,s)}
   <div class="card stack">
     <div class="batter"><button style="text-align:left" data-a="subsheet" data-v="${s.bat}"><div class="label">At bat · ${s.bat+1}<sup>e</sup> · touche pour remplacer</div><div class="name">${esc(nm(id))}</div>${s.dh===id?`<div class="line">DH pour ${esc(nm(s.pitcher))}</div>`:''}<div class="line">${esc(line)}</div></button>
     ${showCount()?`<div class="count"><div class="big" aria-label="${s.b} balles ${s.s} prises">${s.b}-${s.s}</div><div class="lbl"><div class="lights b">${[0,1,2].map(i=>`<i class="${s.b>i?'on':''}"></i>`).join('')}</div><div class="lights s">${[0,1].map(i=>`<i class="${s.s>i?'on':''}"></i>`).join('')}</div></div></div>`:''}</div>
     ${showCount()?`<div class="grid g3"><button class="key pitch b" data-a="p" data-v="B"><b>Balle</b></button><button class="key pitch s" data-a="p" data-v="S"><b>Strike</b></button><button class="key pitch s" data-a="p" data-v="F"><b>Foul</b><small>ball</small></button></div>`:''}
     <button class="btn small ghost" style="align-self:flex-start" data-a="togcount">${showCount()?'Masquer le compte balls / strikes':'Afficher le compte balls / strikes'}</button>
   </div>
+  ${(()=>{if(s.inn<=regInn(m)||s.o||s.B.some(Boolean)||s.b||s.s||s.log.some(x=>x.inn===s.inn&&x.half==='att'&&['pa','run'].includes(x.t)))return'';const n=s.lineup.length,prev=s.lineup[(s.bat-1+n)%n];
+    return`<div class="alert" style="display:block;border-color:var(--accent)"><b>Manche supplémentaire ?</b> Règle 7.01(b) : chaque demi-manche après la fin réglementaire commence avec un coureur en 2e, le frappeur qui précède dans l’ordre.
+    <div class="row" style="margin-top:8px"><button class="btn small primary" data-a="xr" data-v="${prev}">Placer ${esc(nm(prev))} en 2e</button></div></div>`})()}
+  ${(()=>{const j=s.B.indexOf(id);return j<0?'':`<div class="alert warn" style="display:block"><b>${esc(nm(id))} est encore en ${['1re','2e','3e'][j]}</b> alors que c’est son tour au bâton : il a sûrement marqué ou été retiré sans que ce soit noté.
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="btn small" data-a="r" data-v="${j}:score">Il a marqué</button><button class="btn small" data-a="r" data-v="${j}:out">Il a été retiré (+1 out)</button><button class="btn small ghost" data-a="r" data-v="${j}:del">L’enlever de la base</button></div></div>`})()}
   <div class="label">Résultat de la présence</div>
   <div class="grid g4">${['1B','2B','3B','HR'].map(keyR).join('')}</div>
   <div class="grid g4">${['BB','HBP','E','FC'].map(keyR).join('')}</div>
@@ -678,7 +797,7 @@ function attV(m,s){
     <div class="ondeck muted">Ensuite : ${esc(next)}</div></div>
   <div class="row not-tl" style="flex-wrap:nowrap"><button class="btn" style="flex:1" data-a="undo" ${m.events.length?'':'disabled'}>↶ Annuler</button><button class="btn" style="flex:1" data-a="endhalf">Fin d’attaque</button></div></div></div>`;
 }
-window.bench=bench;function bench(s){return visRoster().filter(p=>!s.lineup.includes(p.id)&&!(s.dh&&p.id===s.pitcher))}
+window.bench=bench;function bench(s){const m=M();return pool(m&&m.linkedMatchId,[...s.gone,s.pitcher,s.catcher].filter(Boolean)).filter(p=>!s.lineup.includes(p.id)&&!(s.dh&&p.id===s.pitcher))}
 const dhTag='<span class="tag h" style="margin-left:6px">DH</span>';
 function showCount(){return db.settings.count!==false}
 function keyR(r){const[c,l,g]=RES[r];return`<button class="key ${g==='hit'?'hit':g==='out'?'out':''}" data-a="pa" data-v="${r}"><b>${c}</b><small>${l}</small></button>`}
@@ -758,12 +877,13 @@ function subsNowV(m,s){
   const L=s.log,items=[];
   // nos changements (depuis le dernier lancer)
   for(const e of s.subsNow){
-    if(e.k==='POS'){const lg=L.filter(x=>x.t==='pos'&&x.id===e.id).slice(-1)[0];if(lg)items.push(`<b>Dragons</b> · ${esc(nm(e.id))} passe ${lg.from?'de '+POSL[lg.from]+' ':''}en ${POSL[lg.to]}${lg.other?` · ${esc(nm(lg.other))} ${lg.from?'en '+POSL[lg.from]:''}`:''}`)}
+    if(e.k==='POS'){const lg=L.filter(x=>x.t==='pos'&&x.id===e.id).slice(-1)[0];if(lg)items.push(`<b>Dragons</b> · ${esc(nm(e.id))} passe ${lg.from?deP(POSL[lg.from])+' ':''}en ${POSL[lg.to]}${lg.other?` · ${esc(nm(lg.other))} ${lg.from?'en '+POSL[lg.from]:''}`:''}`)}
     else if(e.k==='SUB'){const lg=L.filter(x=>x.t==='sub'&&x.id===e.id&&x.slot===e.slot).slice(-1)[0];items.push(`<b>Dragons</b> · ${esc(nm(e.id))} remplace ${esc(nm(lg?lg.old:''))} <span class="muted">(${e.slot+1}<sup>e</sup>)</span>`)}
     else if(e.k==='PCH'){const lg=L.filter(x=>x.t==='pch'&&x.id===e.id).slice(-1)[0];items.push(`<b>Dragons</b> · nouveau lanceur : ${esc(nm(e.id))}${lg&&lg.prevTo?` · ${esc(nm(lg.prev))} passe en ${POSL[lg.prevTo]}`:''}`)}
-    else if(e.k==='DHEND')items.push(`<b>Dragons</b> · fin du DH, le pitcher frappe`)}
+    else if(e.k==='DHEND')items.push(`<b>Dragons</b> · fin du DH, le pitcher frappe`)
+    else if(e.k==='ADD')items.push(`<b>Dragons</b> · ${esc(nm(e.id))} entre et frappe ${s.lineup.indexOf(e.id)+1}<sup>e</sup>${e.pos?' · '+POSL[e.pos]:''}`)}
   // changements adverses (saisis par la scoreuse ou le staff)
-  const l=(db.opp||{})[m.id];(l&&l.subs||[]).filter(x=>(x.at||0)>s.lastPlayT&&(s.lastPlayT||!s.anyPlay)).forEach(x=>items.push(x.kind==='pos'?`<b>${esc(shortT(l.team||m.opp))}</b> · ${oppName(x.who)} passe ${x.from?'de '+POSL[x.from]+' ':''}en ${POSL[x.to]||x.to}`:`<b>${esc(shortT(l.team||m.opp))}</b> · ${x.slot==='P'||x.pos==='P'?'nouveau lanceur : ':''}${oppName(x.in)}${x.slot==='P'||x.pos==='P'?' (remplace '+oppName(x.out)+')':' remplace '+oppName(x.out)}`));
+  const l=(db.opp||{})[m.id];(l&&l.subs||[]).filter(x=>(x.at||0)>s.lastPlayT&&(s.lastPlayT||!s.anyPlay)).forEach(x=>items.push(x.kind==='pos'?`<b>${esc(shortT(l.team||m.opp))}</b> · ${oppName(x.who)} passe ${x.from?deP(POSL[x.from])+' ':''}en ${POSL[x.to]||x.to}`:`<b>${esc(shortT(l.team||m.opp))}</b> · ${x.slot==='P'||x.pos==='P'?'nouveau lanceur : ':''}${oppName(x.in)}${x.slot==='P'||x.pos==='P'?' (remplace '+oppName(x.out)+')':' remplace '+oppName(x.out)}`));
   if(!items.length)return'';
   return `<div class="card stack" style="border:2px solid var(--warn);background:var(--warn-soft)"><div class="label" style="color:var(--warn)">Changements · ${halfLab(s)} ${s.inn}</div>${items.map(x=>`<div style="font-size:15px">${x}</div>`).join('')}<div class="muted" style="font-size:12px">Disparaît au premier lancer.</div></div>`;
 }
@@ -778,7 +898,7 @@ function watchV(m,s){
   else top=`<div class="card"><div class="label">Pitcher</div><div class="row" style="justify-content:space-between"><b style="font-size:20px">${esc(nm(s.pitcher))}</b><span class="num" style="font-size:28px">${s.pc[s.pitcher]||0} <span class="muted" style="font-size:14px">lancers</span></span></div></div>
     ${oppBatterCard(m,s,false)}
     <div class="card"><div class="row" style="justify-content:space-between"><div class="label">Outs adverses</div><div class="outs">${[0,1,2].map(i=>`<i class="dot ${s.do>i?'on':''}"></i>`).join('')}</div></div><div class="ddia">${ddiamond(s)}<div class="muted" style="font-size:13px">Coureurs adverses (anonymes)</div></div></div>`;
-  return `<div class="cols"><div class="col">${s.over?'':inningBar(s)}${subsNowV(m,s)}${top}</div><div class="col"><div class="label">Déroulé · ${s.half===s.first?'Top':'Bottom'} ${s.inn}</div><div class="card log">${cur.length?cur.map(l=>`<div class="e"><span>${l}</span></div>`).join(''):'<div class="muted">Rien pour l’instant dans cette demi-manche.</div>'}</div></div></div>`;
+  return `<div class="cols"><div class="col">${s.over?'':inningBar(s)+gameAlertsV(m,s)}${subsNowV(m,s)}${top}</div><div class="col"><div class="label">Déroulé · ${s.half===s.first?'Top':'Bottom'} ${s.inn}</div><div class="card log">${cur.length?cur.map(l=>`<div class="e"><span>${l}</span></div>`).join(''):'<div class="muted">Rien pour l’instant dans cette demi-manche.</div>'}</div></div></div>`;
 }
 function ddiamond(s){
   const pos=[[165,92],[100,28],[35,92]];
@@ -791,7 +911,7 @@ function defV(m,s){
   const lim=+db.settings.limit||90,warn=+db.settings.warn||75;
   const pid=s.pitcher,here=pid?(s.pc[pid]||0):0,before=pid?dayPitches(pid,m.date,m.id):0,tot=here+before;
   const pct=Math.min(100,tot/lim*100),cls=tot>=lim?'bad':tot>=warn?'warn':'';
-  return `<div class="cols"><div class="col">${inningBar(s)}${subsNowV(m,s)}
+  return `<div class="cols"><div class="col">${inningBar(s)}${gameAlertsV(m,s)}${subsNowV(m,s)}
   <div class="card stack">
     <div class="row" style="justify-content:space-between"><div class="label">Pitcher</div><button class="btn small" data-a="pchsheet">${pid?'Changer':'Choisir'}</button></div>
     ${pid&&s.gone.includes(pid)?`<div class="alert bad">${esc(nm(pid))} a été remplacé dans l’ordre : il ne peut plus lancer. Touche « Changer ».</div>`:''}
@@ -799,8 +919,9 @@ function defV(m,s){
     ${pid?`<div class="pc"><div><div class="batter"><div class="name">${esc(nm(pid))}</div></div><div class="muted" style="font-size:14px">${here} dans ce match${before?` · ${before} plus tôt aujourd’hui`:''}</div></div><div style="text-align:right"><div class="big">${tot}</div><div class="label">sur ${lim}</div></div></div>
     <div class="meter ${cls}"><i style="width:${pct}%"></i></div>
     ${tot>=lim?`<div class="alert bad">Limite de ${lim} lancers atteinte pour aujourd’hui.</div>`:tot>=warn?`<div class="alert warn">Plus que ${lim-tot} lancers avant la limite.</div>`:''}
-    <button class="plus" data-a="pt" data-v="1">+1 lancer</button>
-    <div class="row" style="flex-wrap:nowrap"><button class="btn small" style="flex:1" data-a="pt" data-v="-1">−1 (corriger)</button></div>
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap;align-items:center"><div class="label" style="margin:0">Compte du frappeur adverse</div><div class="count" style="gap:10px"><div class="big" style="font-size:34px" aria-label="${s.db} balles ${s.ds} prises">${s.db}-${s.ds}</div><div class="lbl"><div class="lights b">${[0,1,2].map(i=>`<i class="${s.db>i?'on':''}"></i>`).join('')}</div><div class="lights s">${[0,1].map(i=>`<i class="${s.ds>i?'on':''}"></i>`).join('')}</div></div></div></div>
+    <div class="grid g3"><button class="key pitch b" data-a="dpt" data-v="B"><b>Balle</b><small>+1 lancer</small></button><button class="key pitch s" data-a="dpt" data-v="S"><b>Strike</b><small>+1 lancer</small></button><button class="key pitch s" data-a="dpt" data-v="F"><b>Foul</b><small>+1 lancer</small></button></div>
+    <div class="row" style="flex-wrap:nowrap"><button class="btn small" style="flex:1" data-a="pt" data-v="-1">−1 lancer (corriger)</button><button class="btn small" style="flex:1" data-a="pt" data-v="1">+1 lancer (corriger)</button></div>
     <div class="label">Actions de ${esc(nm(pid))}${(()=>{const d=s.df[pid];return d?` · ${d.k} K, ${d.bb} BB, ${d.hbp} HBP, ${d.wp} WP${d.bk?`, ${d.bk} BK`:''}`:''})()}</div>
     <div class="grid g4">${[['K','Strikeout'],['BB','Walk'],['HBP','Hit by pitch'],['WP','Wild pitch']].map(([k,l])=>`<button class="key ${k==='K'?'hit':'out'}" data-a="dp" data-v="${k}"><b>${k}</b><small>${l}</small></button>`).join('')}</div>
     <div class="grid" style="grid-template-columns:1fr 1fr"><button class="key hit" style="min-height:52px" data-a="dp" data-v="KD"><b>K3</b><small>3e strike échappé</small></button><button class="key out" style="min-height:52px" data-a="dp" data-v="BK"><b>BK</b><small>Balk · tous avancent</small></button></div>`
@@ -816,6 +937,7 @@ function defV(m,s){
     </div>
     <div class="label">Frappe adverse</div>
     <div class="grid g4">${[['1B','Simple'],['2B','Double'],['3B','Triple'],['HR','Home run']].map(([k,l])=>`<button class="key" data-a="dhit" data-v="${k}"><b>${k}</b><small>${l}</small></button>`).join('')}</div>
+    ${s.inn>regInn(m)&&!s.do&&!s.dB.some(Boolean)&&!(s.opa.some(x=>x.inn===s.inn))?`<div class="alert" style="display:block;border-color:var(--accent)"><b>Manche supplémentaire ?</b> Règle 7.01(b) : un coureur adverse part de la 2e. <button class="btn small" style="margin-left:6px" data-a="drun" data-v="1">Placer un coureur en 2e</button></div>`:''}
     <div class="ddia">${ddiamond(s)}<div class="muted" style="font-size:13px">Coureurs adverses sur base. Touche une base pour ajouter, faire avancer, marquer ou retirer un coureur. Garde-les à jour : un BB bases pleines ou un balk avec un coureur en 3e donne un point automatiquement.</div></div>
     <div class="row" style="flex-wrap:nowrap;gap:6px;display:none"><span class="label" style="flex:none">Coureurs</span>${['1re','2e','3e'].map((b,i)=>`<button class="btn small" style="flex:1;${s.dB[i]?'background:var(--accent);color:var(--accent-ink);border-color:var(--accent)':''}" data-a="drun" data-v="${i}">${s.dB[i]?'● ':''}${b}</button>`).join('')}</div>
     ${s.dB.some(Boolean)?`<div class="row" style="flex-wrap:nowrap;gap:6px"><span class="label" style="flex:none">Balle sortie</span><button class="btn small" style="flex:1" data-a="dot" data-v="1">Erreur pick‑off<br><small class="muted">+1 base</small></button><button class="btn small" style="flex:1" data-a="dot" data-v="2">Erreur de relais<br><small class="muted">+2 bases</small></button></div>`:''}
@@ -852,9 +974,12 @@ function chgV(m,s){
 function lineupV(m,s){
   return `<div class="cols"><div class="col">${s.pitcher?`<div class="card"><div class="label">Pitcher</div><b>${esc(nm(s.pitcher))}</b>${s.dh?` <span class="muted">· ne frappe pas, DH : ${esc(nm(s.dh))}</span>`:''}</div>`:''}
   <div class="label">${SC()?'Ordre actuel des Dragons':'Ordre actuel · touche « Remplacer » pour un changement'}</div>
+  ${SC()?'':`<div class="row" style="flex-wrap:nowrap;gap:6px"><button class="btn small primary" style="flex:1" data-a="multisheet">⇄ Plusieurs changements d’un coup</button>${s.lineup.length<9?`<button class="btn small" style="flex:1" data-a="addsheet">＋ Ajouter un ${s.lineup.length+1}<sup>e</sup> frappeur</button>`:''}</div>`}
+  ${s.lineup.length<9?`<div class="alert warn">Vous jouez à ${s.lineup.length}. Un joueur arrive ? « Ajouter un ${s.lineup.length+1}<sup>e</sup> frappeur » : il frappe en dernier.</div>`:''}
   <div class="list">${s.lineup.map((id,i)=>`<div class="item ${i===s.bat&&s.half==='att'?'sel':''}"><span class="n">${i+1}</span><span class="grow"><b>${esc(nm(id))}</b>${s.dh===id?dhTag:''}${P(id).num?` <span class="muted">#${esc(P(id).num)}</span>`:''}</span><span class="tag ${s.pos[id]?'h':''}" style="min-width:36px;text-align:center">${s.pos[id]||'—'}</span>${SC()?'':`<button class="btn small ghost" data-a="possheet" data-v="${id}">Poste</button><button class="btn small" data-a="subsheet" data-v="${i}">Remplacer</button>`}</div>`).join('')}</div>
   </div><div class="col">${s.dhEnded?`<div class="alert warn">Fin du DH : le pitcher frappe (règle 5.11).</div>`:''}
   <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="muted" style="font-size:14px">${s.reentry?'<b>Match amical</b> : réentrée autorisée':'<b>Match de saison</b> : pas de réentrée'}</span>${SC()?'':`<button class="btn small" data-a="kindtog">${s.reentry?'Passer en saison':'Passer en amical'}</button>`}</div>
+  <div class="muted" style="font-size:14px"><b>Durée</b> : ${regInn(m)} manches · <b>Mercy rule</b> : ${mercyRules(m).length?mercyRules(m).map(r=>`${r.runs} pts après ${r.after} manches`).join(', '):'non'}</div>
   <div><div class="muted" style="font-size:14px;margin-bottom:6px"><b>Localisation des frappes</b> : ${{'':'désactivée',us:'Dragons seulement',all:'Dragons + adversaires'}[sprMode(m)]}</div>${SC()?'':`<div class="row" style="flex-wrap:nowrap;gap:6px">${[['','Désactivée','résultat seulement'],['us','Dragons','nos frappes'],['all','Dragons + adversaires','les deux équipes']].map(([k,l])=>`<button class="btn small ${sprMode(m)===k?'primary':''}" style="flex:1;padding:0 6px" data-a="spraytog" data-v="${k}">${l}</button>`).join('')}</div>`}</div>
   <p class="muted" style="margin:0;font-size:13px">Un changement de poste en défense ne change pas l’ordre. Un remplaçant prend la place dans l’ordre du joueur qui sort. Pour un nouveau pitcher : onglet Jeu, en défense, « Changer ».</p>
   <div class="label">Remplaçants</div>
@@ -917,6 +1042,7 @@ function recapV(m,s){
   <div class="card log">${logV(s)||'<span class="muted">Aucune action pour l’instant.</span>'}</div>
   <button class="btn" data-a="copy">Copier le récap (texte)</button>
   <button class="btn" data-a="scoreimg">Image du score à partager</button>
+  ${s.over&&!SC()?`<button class="btn" data-a="mailprev">Mails du récap · aperçu et envoi</button>`:''}
   ${m.linkedMatchId?`<button class="btn primary" data-a="pushres">Envoyer le score dans Résultats</button><p class="muted" style="margin:-6px 0 0;font-size:13px">Remplace le score par inning de « ${esc((db.cal.find(x=>x.id===m.linkedMatchId)||{}).label||'ce match')} » dans l’appli.</p>`:''}`;
 }
 function defTable(m,s){
@@ -926,13 +1052,16 @@ function defTable(m,s){
 }
 function logLine(e){
   if(e.sub)return'';
-  if(e.t==='osub'){const x=e.x;return `<b>${esc(e.team)}</b> · `+(x.kind==='pos'?`${oppName(x.who)} passe ${x.from?'de '+POSL[x.from]+' ':''}en ${POSL[x.to]||x.to}`:`${x.slot==='P'||x.pos==='P'?'nouveau lanceur : ':''}${oppName(x.in)} remplace ${oppName(x.out)}`)}
+  if(e.t==='osub'){const x=e.x;return `<b>${esc(e.team)}</b> · `+(x.kind==='pos'?`${oppName(x.who)} passe ${x.from?deP(POSL[x.from])+' ':''}en ${POSL[x.to]||x.to}`:`${x.slot==='P'||x.pos==='P'?'nouveau lanceur : ':''}${oppName(x.in)} remplace ${oppName(x.out)}`)}
   if(e.t==='opa'){const m=M(),p=m&&e.k?oppOrder(m).find(x=>x.key===e.k):null;const who=p?`<b>${oppName(p)}</b>`:'Frappeur adverse';return `${who} — ${{'1B':'Simple','2B':'Double','3B':'Triple','HR':'Home run','OUT':'retiré'}[e.res]||e.res}`}
   if(e.t==='pa')return`<b>${esc(nm(e.id))}</b> — ${RES[e.res][1]} ${showCount()?`<span class="muted">(${e.count})</span>`:''}${e.runs.length?` <span class="runs">· marque : ${e.runs.map(nm).map(esc).join(', ')}</span>`:''}${(e.extra||[]).map(x=>x.ot?` · ${x.ot===1?'erreur pick‑off':'erreur de relais (balle sortie)'} : `+x.moved.map(([id,to])=>to>=3?`<span class="runs">${esc(nm(id))} marque</span>`:`${esc(nm(id))} en ${['','2e','3e'][to]}`).join(', '):x.a==='err'?(x.to>=3?` · <span class="runs">${esc(nm(x.id))} marque sur erreur</span>`:` · ${esc(nm(x.id))} en ${['','2e','3e'][x.to]} sur erreur`):x.a==='out'?` · <span style="color:var(--out)">${esc(nm(x.id))} out${x.base<3?' en '+['1re','2e','3e'][x.base]:' au marbre'}</span>`:x.to>=3?` · <span class="runs">${esc(nm(x.id))} marque</span>`:` · ${esc(nm(x.id))} en ${['','2e','3e'][x.to]}`).join('')}`;
   if(e.t==='run'&&e.a==='err')return e.to>=3?`<span class="runs">${esc(nm(e.id))} marque sur erreur</span>`:`${esc(nm(e.id))} avance en ${['','2e','3e'][e.to]} sur erreur`;
   if(e.t==='run'){const b=['1re','2e','3e'][e.base];return e.a==='cs'?`<span style="color:var(--out)">${esc(nm(e.id))} pris en vol (depuis la ${b})</span>`:e.a==='out'?`${esc(nm(e.id))} out en ${b} base`:['wp','pb'].includes(e.a)?`${esc(nm(e.id))} ${e.to>=3?'marque':'avance en '+['','2e','3e'][e.to]} (${e.a==='wp'?'wild pitch':'passed ball'})`:e.a==='sb'?`${esc(nm(e.id))} vole ${e.to>=3?'le marbre':['','la 2e','la 3e'][e.to]}`:e.to>=3?`<span class="runs">${esc(nm(e.id))} marque</span>`:`${esc(nm(e.id))} avance en ${['','2e','3e'][e.to]}`}
   if(e.t==='wp')return`${{WP:'Wild pitch',PB:'Passed ball',BK:'Balk',OT1:'Erreur pick‑off (+1 base)',OT2:'Erreur de relais (+2 bases)'}[e.kind]}${e.moved.length?' : ':''}`+e.moved.map(([id,to])=>to>=3?`<span class="runs">${esc(nm(id))} marque</span>`:`${esc(nm(id))} en ${['','2e','3e'][to]}`).join(', ');
   if(e.t==='sub')return`Changement : <b>${esc(nm(e.id))}</b> remplace ${esc(nm(e.old))}${e.pos?' · '+POSL[e.pos]:''}`;
+  if(e.t==='add')return`Ajout : <b>${esc(nm(e.id))}</b> frappe ${e.slot+1}<sup>e</sup>${e.pos?' · '+POSL[e.pos]:''}`;
+  if(e.t==='run'&&e.a==='xr')return`<span class="muted">Manche supplémentaire : ${esc(nm(e.id))} placé en 2e</span>`;
+  if(e.t==='run'&&e.a==='del')return`<span class="muted">${esc(nm(e.id))} retiré de la ${['1re','2e','3e'][e.base]} (correction)</span>`;
   if(e.t==='pos')return`Poste : <b>${esc(nm(e.id))}</b> ${e.from?POSL[e.from]+' → ':'→ '}${POSL[e.to]}${e.other?` · ${esc(nm(e.other))} ${e.from?'→ '+POSL[e.from]:''}`:''}`;
   if(e.t==='dp'){const m=M(),p=m&&e.k?oppOrder(m).find(x=>x.key===e.k):null;return`${esc(nm(e.id))} : ${DPL[e.kind]}${p?' · '+oppName(p):''}`}
   if(e.t==='cat')return`Catcher : ${esc(nm(e.id))}`;
@@ -978,10 +1107,39 @@ function runnerSheet(i){
     <button class="item" data-a="r" data-v="${i}:out"><span class="grow"><b style="color:var(--out)">Retiré</b></span></button>
   </div><button class="btn" data-a="close">Fermer</button>`);
 }
+/* Plusieurs changements d'un coup : chaque place de l'ordre garde son joueur ou reçoit un remplaçant, et chacun peut changer de poste.
+   L'ordre au bâton ne bouge jamais (un joueur déjà dans l'ordre ne peut pas changer de place). Le lanceur se change avec « Changer ». */
+const FIELDPOS=['C','1B','2B','3B','SS','LF','CF','RF'];
+function multiSheet(){
+  window.__reopen=multiSheet;
+  const s=replay(M()),benchL=window.bench(s),dhP=s.dh&&s.pitcher&&!s.lineup.includes(s.pitcher);
+  const rows=s.lineup.map((id,i)=>{
+    const isDH=id===s.dh,cur=s.pos[id]||'';
+    const pOpts=`<option value="${id}">${esc(nm(id))} (reste)</option>`+benchL.map(b=>{const g=s.gone.includes(b.id)&&!s.reentry;return`<option value="${b.id}" ${g?'disabled':''}>↳ ${esc(nm(b.id))}${g?' (sorti)':''}</option>`}).join('');
+    const posSel=isDH?'<span class="tag h" style="min-width:52px;text-align:center">DH</span>':`<select data-mp="${i}" style="width:74px;flex:none;padding:8px 4px">${['','P',...FIELDPOS].map(x=>`<option value="${x}" ${x===cur?'selected':''}>${x||'—'}</option>`).join('')}</select>`;
+    return `<div class="item"><span class="n">${i+1}</span><select data-mi="${i}" style="flex:1;min-width:0;padding:8px 6px">${pOpts}</select>${posSel}</div>`}).join('');
+  sheet(`<h3>Plusieurs changements</h3><p class="muted" style="margin:0;font-size:14px">Pour chaque place : garde le joueur ou choisis un remplaçant (↳), puis son poste (P = lanceur). L’ordre au bâton ne change pas. Tout est validé d’un coup.</p>
+  ${dhP?`<div class="alert warn" style="display:block;font-size:14px">Lanceur actuel : <b>${esc(nm(s.pitcher))}</b> (DH en place). Si un joueur de l’ordre passe lanceur (P), c’est la fin du DH (règle 5.11).</div>`:''}
+  ${poolNote(M().linkedMatchId)}<div class="list">${rows}</div><div id="mierr" class="alert bad" style="display:none"></div>
+  <button class="btn primary" data-a="multigo">Valider les changements</button><button class="btn" data-a="close">Annuler</button>`);
+}
+function readMulti(){
+  const s=replay(M()),plan=s.lineup.map((id,i)=>{const sel=document.querySelector(`[data-mi="${i}"]`),ps=document.querySelector(`[data-mp="${i}"]`);
+    return{i,old:id,id:sel?sel.value:id,pos:id===s.dh?'DH':(ps?ps.value:s.pos[id]||'')}});
+  const ids=plan.map(x=>x.id);if(new Set(ids).size!==ids.length)return{err:'Un même joueur est choisi à deux places.'};
+  const bad=plan.find(x=>x.id!==x.old&&s.gone.includes(x.id)&&!s.reentry);if(bad)return{err:`${nm(bad.id)} est sorti du match : pas de réentrée (match de saison).`};
+  const ps=plan.map(x=>x.pos).filter(x=>x&&x!=='DH');const dup=ps.find((x,k)=>ps.indexOf(x)!==k);if(dup)return{err:`Deux joueurs au poste ${dup} (${POSL[dup]}).`};
+  const newP=plan.find(x=>x.pos==='P');
+  if(!newP&&s.pitcher&&s.lineup.includes(s.pitcher))return{err:'Personne au poste de lanceur (P).'};
+  if(newP&&newP.id!==s.pitcher&&s.pitched.includes(newP.id)&&!s.reentry)return{err:`${nm(newP.id)} a déjà lancé dans ce match : il ne peut pas revenir au monticule.`};
+  return{s,plan,newP};
+}
 function subSheet(slot){
+  window.__reopen=()=>subSheet(slot);
   const s=replay(M()),out=s.lineup[slot],bench=window.bench(s).sort((a,b)=>s.gone.includes(a.id)-s.gone.includes(b.id));
   const onBase=s.B.includes(out),pin=s.dh&&s.pitcher&&!s.lineup.includes(s.pitcher)&&(out===s.dh||!onBase);
   sheet(`<h3>Remplacer ${esc(nm(out))}</h3><p class="muted" style="margin:0">${slot+1}<sup>e</sup> dans l’ordre${onBase?' · actuellement sur base (coureur suppléant)':''}</p>
+  ${poolNote(M().linkedMatchId)}
   <div class="row" style="flex-wrap:nowrap"><input id="qsub" placeholder="Joueur pas inscrit : Prénom Nom" autocomplete="off"><button class="btn small" data-a="qsub" data-v="${slot}">Ajouter</button></div>
   <div class="list">${pin?`<button class="item" data-a="sub" data-v="${slot}:${s.pitcher}"><span class="n">P</span><span class="grow"><b>${esc(nm(s.pitcher))}</b> <span class="muted">· ton pitcher</span><div class="muted" style="font-size:13px">${out===s.dh?'Il frappe à la place du DH':'Le DH part en défense, le pitcher frappe à cette place'} → fin du DH</div></span></button>`:''}${bench.map(p=>{const g=s.gone.includes(p.id),lock=g&&!s.reentry;return`<button class="item" ${lock?'disabled style="opacity:.45"':''} data-a="sub" data-v="${slot}:${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b>${g?(s.reentry?' <span class="muted">· sorti · réentrée (amical)</span>':' <span class="muted">· sorti, ne peut pas revenir</span>'):''}</span></button>`}).join('')||'<p class="muted">Personne sur le banc. Ajoute des joueurs dans l’effectif.</p>'}</div>
   <button class="btn" data-a="close">Fermer</button>`);
@@ -992,11 +1150,20 @@ function derSheet(){
 }
 function catSheet(){
   const s=replay(M());
-  sheet(`<h3>Qui est catcher ?</h3><div class="list">${visRoster().map(p=>`<button class="item ${s.catcher===p.id?'sel':''}" data-a="cat" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span></button>`).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
+  window.__reopen=catSheet;
+  sheet(`<h3>Qui est catcher ?</h3>${poolNote(M().linkedMatchId)}<div class="list">${pool(M().linkedMatchId,[s.catcher,...s.lineup].filter(Boolean)).map(p=>`<button class="item ${s.catcher===p.id?'sel':''}" data-a="cat" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b></span></button>`).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
 }
 function pchSheet(){
-  const m=M(),s=replay(m),lim=+db.settings.limit||90;
-  sheet(`<h3>Qui est pitcher ?</h3><div class="list">${visRoster().map(p=>{const n=(s.pc[p.id]||0)+dayPitches(p.id,m.date,m.id);return`<button class="item ${s.pitcher===p.id?'sel':''}" ${s.gone.includes(p.id)&&!s.reentry?'disabled style="opacity:.45"':''} data-a="pch" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b>${s.gone.includes(p.id)?(s.reentry?' <span class="muted">· sorti · réentrée (amical)</span>':' <span class="muted">· sorti, ne peut pas revenir</span>'):s.pitched.includes(p.id)&&s.pitcher!==p.id?' <span class="muted">· a déjà lancé</span>':s.dh===p.id?' <span class="muted">· DH</span>':''}</span><span class="num" style="font-size:18px;color:${n>=lim?'var(--out)':'var(--muted)'}">${n?n+' aujourd’hui':''}</span></button>`}).join('')}</div><button class="btn" data-a="close">Fermer</button>`);
+  window.__reopen=pchSheet;
+  const m=M(),s=replay(m),lim=+db.settings.limit||90,all=pool(m.linkedMatchId,[s.pitcher,...s.lineup].filter(Boolean));
+  const ps=all.filter(p=>isPitcherPos(p.id)||p.id===s.pitcher||s.pitched.includes(p.id)),rest=all.filter(p=>!ps.includes(p));
+  const item=p=>{const n=(s.pc[p.id]||0)+dayPitches(p.id,m.date,m.id);return`<button class="item ${s.pitcher===p.id?'sel':''}" ${s.gone.includes(p.id)&&!s.reentry?'disabled style="opacity:.45"':''} data-a="pch" data-v="${p.id}"><span class="n">${esc(p.num)}</span><span class="grow"><b>${esc(p.name)}</b>${s.gone.includes(p.id)?(s.reentry?' <span class="muted">· sorti · réentrée (amical)</span>':' <span class="muted">· sorti, ne peut pas revenir</span>'):s.pitched.includes(p.id)&&s.pitcher!==p.id?' <span class="muted">· a déjà lancé</span>':s.dh===p.id?' <span class="muted">· DH</span>':''}</span><span class="num" style="font-size:18px;color:${n>=lim?'var(--out)':'var(--muted)'}">${n?n+' aujourd’hui':''}</span></button>`};
+  const showRest=showAllP||!ps.length;
+  const faced=s.opa.length-s.pOpa,warn3=s.pitcher&&s.half==='def'&&faced<3&&s.pKey===s.inn+s.half;
+  sheet(`<h3>Qui est pitcher ?</h3>${warn3?`<div class="alert warn" style="display:block;font-size:14px"><b>Règle 5.10(g)</b> : ${esc(nm(s.pitcher))} n’a affronté que ${faced} frappeur${faced>1?'s':''} depuis son entrée. Un lanceur doit affronter au moins 3 frappeurs de suite (ou finir la demi-manche), sauf blessure ou malaise constaté par l’arbitre.</div>`:''}${poolNote(m.linkedMatchId)}
+  ${ps.length?`<div class="label">Lanceurs</div><div class="list">${ps.map(item).join('')}</div>`:''}
+  ${rest.length?(showRest?`<div class="label">${ps.length?'Autres joueurs':'Joueurs'}</div><div class="list">${rest.map(item).join('')}</div>`:`<button class="btn" style="border-style:dashed" data-a="allp">Autre joueur…</button>`):''}
+  <button class="btn" data-a="close">Fermer</button>`);
 }
 
 /* ============ Actions ============ */
@@ -1005,7 +1172,7 @@ document.addEventListener('click',ev=>{
   const a=t.dataset.a,v=t.dataset.v;
   if(a==='close'){if(ev.target===t||t.tagName==='BUTTON')close();return}
   const m=M();
-  const MUT=['spray','dout','db','dhit','drun','dr','p','pa','r','runner','sub','subsheet','pch','pchsheet','pt','opp','endhalf','fin','undo','note','notetxt','dp','der','dersheet','cat','catsheet','first','pchgo','fcgo','possheet','posset'];
+  const MUT=['xr','dpt','multisheet','multigo','addsheet','addgo','spray','dout','db','dhit','drun','dr','p','pa','r','runner','sub','subsheet','pch','pchsheet','pt','opp','endhalf','fin','undo','note','notetxt','dp','der','dersheet','cat','catsheet','first','pchgo','fcgo','possheet','posset'];
   const ADVW=['osub','osubgo','advsave','advadd','advcopy']; // line-up adverse : staff et scoreuse
   if(view==='live'&&m&&!mine(m)&&(MUT.includes(a)||a==='ob'||a==='take'&&SC())){toast(SC()?'Lecture seule : la saisie est faite par le staff':'Lecture seule · touche « Prendre la main » pour saisir');return}
   switch(a){
@@ -1021,9 +1188,12 @@ document.addEventListener('click',ev=>{
     case'go':view=v;close();render();break;
     case'tab':tab=v;render();scrollTo(0,0);break;
     case'open':db.current=v;save();view='live';tab=mine(db.matches[v])||SC()?'jeu':'recap';render();break;
-    case'newmatch':draft={kind:'saison',spray:false,opp:'',date:today(),home:true,lineup:[],pitcher:null,catcher:null,dhOn:false,dh:null,link:''};view='setup';render();break;
+    case'newmatch':draft={kind:'saison',inns:7,mercy:null,spray:false,opp:'',date:today(),home:true,lineup:[],pitcher:null,catcher:null,dhOn:false,dh:null,link:'',squad:(sheetSquads()[0]||SQS()[0]||{}).id||null};view='setup';render();break;
+    case'setsq':draft.squad=v;draft.link='';showAll=false;render();break;
     case'home':syncDraft();draft.home=v==='1';render();break;
-    case'kind':syncDraft();draft.kind=v;render();break;
+    case'kind':syncDraft();draft.kind=v;draft.mercy=null;render();break;
+    case'inns':syncDraft();draft.inns=+v;draft.mercy=null;render();break;
+    case'mercytog':{syncDraft();const cur=draft.mercy||(draft.kind==='amical'?[]:MERCY_PRESET[+draft.inns||7]);draft.mercy=cur.length?[]:JSON.parse(JSON.stringify(MERCY_PRESET[+draft.inns||7]));render();break}
     case'spraymode':syncDraft();draft.spray=v||false;render();break;
     case'spraytog':{if(!mine(m)){toast('Lecture seule');break}m.spray=v||false;touch(m);render();toast({'':'Localisation des frappes désactivée',us:'Localisation : Dragons seulement',all:'Localisation : Dragons + adversaires'}[v||'']);break}
     case'spray':{const sv=t.closest('svg')||t,i=window.__spr&&window.__spr.idx,e=m.events[i],loc=DragonsSpray.locFromEvent(sv,ev);close();if(!e||e.t!==window.__spr.t)break;e.loc=DragonsSpray.fix(loc,window.__spr.res);if(window.__spr.b)e.b=window.__spr.b;touch(m);render();toast('Frappe placée');break}
@@ -1034,7 +1204,7 @@ document.addEventListener('click',ev=>{
     case'ladd':syncDraft();draft.lineup.push(v);render();break;
     case'lrm':syncDraft();if(draft.lineup[+v]===draft.dh)draft.dh=null;draft.lineup.splice(+v,1);render();break;
     case'lup':{syncDraft();const i=+v,l=draft.lineup;[l[i-1],l[i]]=[l[i],l[i-1]];render();break}
-    case'start':{syncDraft();const id=uid();db.matches[id]={id,opp:draft.opp.trim()||'Adversaire',date:draft.date||today(),home:draft.home,lineup:draft.lineup,pitcher:draft.pitcher,catcher:draft.catcher||null,dh:draft.dhOn?draft.dh:null,pos:draft.pos||{},kind:draft.kind||'saison',spray:draft.spray||false,linkedMatchId:draft.link||null,device:db.device,names:Object.fromEntries([...draft.lineup,draft.pitcher,draft.catcher].filter(Boolean).map(x=>[x,nm(x)])),events:[],created:Date.now()};touch(db.matches[id]);db.current=id;save();view='live';tab='jeu';render();break}
+    case'start':{syncDraft();if(draft.lineup.length<9&&!t.dataset.ok){sheet(`<h3>Seulement ${draft.lineup.length} frappeurs</h3><p style="margin:0">Règle 7.03(b) : en match officiel, une équipe qui ne peut pas aligner 9 joueurs perd par forfait. À ${draft.lineup.length}, réserve-le à un amical, ou si l’arbitre et l’adversaire l’acceptent en attendant un retardataire. Si un joueur arrive : onglet Line-up → « Ajouter un frappeur », il frappera en dernier.</p><button class="btn primary" data-a="start" data-ok="1">Commencer à ${draft.lineup.length}</button><button class="btn" data-a="close">Compléter l’ordre</button>`);break}close();const id=uid();db.matches[id]={id,opp:draft.opp.trim()||'Adversaire',date:draft.date||today(),home:draft.home,lineup:draft.lineup,pitcher:draft.pitcher,catcher:draft.catcher||null,dh:draft.dhOn?draft.dh:null,pos:draft.pos||{},kind:draft.kind||'saison',inns:+draft.inns||7,mercy:draft.mercy||(draft.kind==='amical'?[]:MERCY_PRESET[+draft.inns||7]),spray:draft.spray||false,linkedMatchId:draft.link||null,squad:draft.squad||((SQS()[0]||{}).id)||null,device:db.device,names:Object.fromEntries([...draft.lineup,draft.pitcher,draft.catcher].filter(Boolean).map(x=>[x,nm(x)])),events:[],created:Date.now()};touch(db.matches[id]);db.current=id;save();view='live';tab='jeu';render();break}
     case'qadd':case'qsub':{const inp=document.getElementById(a==='qadd'?'qadd':'qsub'),txt=(inp&&inp.value||'').trim();if(!txt){toast('Tape le prénom (et le nom)');break}
       if(a==='qadd')syncDraft();
       const [pr,...rest]=txt.split(/\s+/),before=new Set(db.roster.map(x=>x.id));
@@ -1068,7 +1238,26 @@ document.addEventListener('click',ev=>{
     case'fcgo':{const s0=replay(m);close();push(v?{k:'PA',res:'FC',out:v}:{k:'PA',res:'FC'});sprayAsk('FC',s0.lineup[s0.bat]);toast('Fielder’s choice');break}
     case'runner':if(replay(m).B[+v])runnerSheet(+v);break;
     case'r':{const[i,act]=v.split(':');close();push({k:'R',i:+i,a:act});break}
+    case'allros':if(view==='setup')syncDraft();showAll=!showAll;if(document.querySelector('.sheet')&&window.__reopen)window.__reopen();else render();break;
+    case'allp':if(view==='setup')syncDraft();showAllP=!showAllP;if(document.querySelector('.sheet')&&window.__reopen)window.__reopen();else render();break;
+    case'xr':push({k:'XR',id:v});toast(nm(v)+' part de la 2e base');break;
     case'subsheet':subSheet(+v);break;
+    case'multisheet':multiSheet();break;
+    case'multigo':{const r=readMulti();if(r.err){const el=document.getElementById('mierr');el.textContent=r.err;el.style.display='block';break}
+      const{s,plan,newP}=r,g=uid(),T=Date.now(),ev=[];
+      // 1) ceux qui restent prennent leur nouveau poste, 2) les remplaçants entrent à leur poste, 3) le nouveau lanceur
+      plan.filter(x=>x.id===x.old&&x.pos&&x.pos!=='P'&&x.pos!=='DH'&&x.pos!==(s.pos[x.id]||'')).forEach(x=>ev.push({k:'POS',id:x.id,pos:x.pos,force:true,g,t:T}));
+      plan.filter(x=>x.id!==x.old).forEach(x=>ev.push({k:'SUB',slot:x.i,id:x.id,pos:x.pos,run:true,g,t:T}));
+      if(newP&&newP.id!==s.pitcher)ev.push(Object.assign({k:'PCH',id:newP.id,np:true,g,t:T},s.pitcher&&!plan.some(x=>x.id===s.pitcher)?{out:s.pitcher}:{}));
+      if(!ev.length){close();toast('Aucun changement');break}
+      m.names=m.names||{};plan.forEach(x=>m.names[x.id]=nm(x.id));ev.forEach(e=>m.events.push(e));close();touch(m);render();
+      toast(`${ev.length} changement${ev.length>1?'s':''} noté${ev.length>1?'s':''}`);break}
+    case'addsheet':{window.__reopen=()=>{const b=document.createElement('button');b.dataset.a='addsheet';b.hidden=true;document.body.appendChild(b);b.click();b.remove()};const s=replay(m),used=Object.values(s.pos),free=FIELDPOS.filter(x=>!used.includes(x));
+      sheet(`<h3>Ajouter un ${s.lineup.length+1}<sup>e</sup> frappeur</h3><p class="muted" style="margin:0">Il frappe en dernier (${s.lineup.length+1}<sup>e</sup>). Choisis son poste puis le joueur.</p>
+        <label class="row" style="flex-wrap:nowrap;align-items:center"><span class="label" style="margin:0">Poste</span><select id="addpos" style="flex:1">${['',...FIELDPOS].map(x=>`<option value="${x}" ${x===(free[0]||'')?'selected':''}>${x?x+' · '+POSL[x]+(used.includes(x)?' (occupé)':''):'— aucun pour l’instant'}</option>`).join('')}</select></label>
+        ${poolNote(m.linkedMatchId)}<div class="list">${window.bench(s).map(b=>{const g=s.gone.includes(b.id)&&!s.reentry;return`<button class="item" data-a="addgo" data-v="${b.id}" ${g?'disabled style="opacity:.45"':''}><span class="n">${esc(P(b.id).num||'')}</span><span class="grow"><b>${esc(nm(b.id))}</b>${g?' <span class="muted">· sorti</span>':''}</span></button>`}).join('')||'<p class="muted">Personne sur le banc.</p>'}</div>
+        <button class="btn" data-a="close">Annuler</button>`);break}
+    case'addgo':{const pos=(document.getElementById('addpos')||{}).value||'';close();push({k:'ADD',id:v,pos});m.names=m.names||{};m.names[v]=nm(v);touch(m);toast(`${nm(v)} entre et frappe en dernier`);break}
     case'sub':{const[slot,id]=v.split(':'),s0=replay(m);
       if(s0.gone.includes(id)&&!s0.reentry){toast(nm(id)+' est sorti du match : pas de réentrée (match de saison)');break}
       close();push({k:'SUB',slot:+slot,id,run:true});
@@ -1076,7 +1265,8 @@ document.addEventListener('click',ev=>{
     case'pchsheet':pchSheet();break;
     case'catsheet':catSheet();break;
     case'cat':close();push({k:'CAT',id:v});break;
-    case'dp':{if(v==='BK'&&!t.dataset.pc&&replay(m).pitcher){sheet(`<h3>Balk</h3><p class="muted" style="margin:0">${esc(nm(replay(m).pitcher))} a-t-il lancé la balle vers le frappeur ?</p><div class="grid" style="grid-template-columns:1fr 1fr"><button class="key hit" data-a="dp" data-v="BK" data-pc="1"><b>Oui</b><small>+1 lancer</small></button><button class="key" data-a="dp" data-v="BK" data-pc="0"><b>Non</b><small>pas de lancer</small></button></div><button class="btn" data-a="close">Annuler</button>`);break}
+    case'dp':{if(v==='BK'&&replay(m).half==='def'&&!replay(m).dB.some(Boolean)){push({k:'DPT',v:'B'});toast('Sans coureur, c’est un lancer irrégulier : balle (règle 6.02(b))');break}
+      if(v==='BK'&&!t.dataset.pc&&replay(m).pitcher){sheet(`<h3>Balk</h3><p class="muted" style="margin:0">${esc(nm(replay(m).pitcher))} a-t-il lancé la balle vers le frappeur ?</p><div class="grid" style="grid-template-columns:1fr 1fr"><button class="key hit" data-a="dp" data-v="BK" data-pc="1"><b>Oui</b><small>+1 lancer</small></button><button class="key" data-a="dp" data-v="BK" data-pc="0"><b>Non</b><small>pas de lancer</small></button></div><button class="btn" data-a="close">Annuler</button>`);break}
       if(t.dataset.pc)close();
       const st0=replay(m),before=st0.half;push(Object.assign({k:'DP',kind:v},(['K','KD','BB','HBP','WP','PB'].includes(v)||t.dataset.pc==='1')&&st0.pitcher?{pc:1}:{}));const st1=replay(M()),pts=sum(st1.opp)-sum(st0.opp);
       toast(before==='def'&&st1.half==='att'?'3 outs · on passe en attaque':pts>0?`Point adverse : ${v==='BK'?'balk avec un coureur en 3e':'bases pleines, coureur de 3e poussé au marbre'}`:(v==='WP'||v==='PB')&&before==='def'&&st0.dB.some(Boolean)?DPL[v]+' · touche la base des coureurs qui ont avancé':DPL[v]+((['K','KD','BB','HBP','WP','PB'].includes(v)||t.dataset.pc==='1')&&st0.pitcher?' · +1 lancer':''));break}
@@ -1110,10 +1300,13 @@ document.addEventListener('click',ev=>{
       if(dhe==='1')m.events.push({k:'DHEND',g,t:Date.now()});
       m.names=m.names||{};[nw,who].filter(Boolean).forEach(x=>m.names[x]=nm(x));touch(m);render();
       toast(dhe==='1'?'Changement noté · fin du DH':'Changement de pitcher noté');break}
+    case'dpt':{const s0=replay(m);push({k:'DPT',v});const s1=replay(M());
+      if(s1.half!==s0.half)toast('Strikeout · 3 outs, on passe en attaque');else if(s1.obi>s0.obi)toast(v==='B'?'Ball 4 · walk':'Strike 3 · strikeout');
+      {const lim=+db.settings.limit||90,n=(s1.pc[s1.pitcher]||0)+dayPitches(s1.pitcher,m.date,m.id);if(n===lim)toast(`Limite de ${lim} atteinte`);else if(n===(+db.settings.warn||75))toast(`${lim-n} lancers restants`)}break}
     case'pt':push({k:'PT',d:+v});
       {const s=replay(M()),lim=+db.settings.limit||90,n=(s.pc[s.pitcher]||0)+dayPitches(s.pitcher,m.date,m.id);if(+v>0&&n===lim)toast(`Limite de ${lim} atteinte`);else if(+v>0&&n===(+db.settings.warn||75))toast(`${lim-n} lancers restants`)}
       break;
-    case'dout':{const before=replay(m).half;push({k:'DOUT',d:+v});if(+v>0&&before==='def')sprayAsk('OUT',null,true);if(before==='def'&&replay(M()).half==='att')toast('3 outs · on passe en attaque');break}
+    case'dout':{const s0=replay(m),before=s0.half;push(Object.assign({k:'DOUT',d:+v},+v>0&&before==='def'&&s0.pitcher?{pc:1}:{}));if(+v>0&&before==='def')sprayAsk('OUT',null,true);if(before==='def'&&replay(M()).half==='att')toast('3 outs · on passe en attaque');break}
     case'db':push({k:'DB',i:+v});break;
     case'ot':push({k:'OT',n:+v});toast(v==='1'?'Erreur pick‑off · +1 base':'Erreur de relais · +2 bases');break;
     case'dot':push({k:'DOT',n:+v});toast((v==='1'?'Erreur pick‑off · +1 base':'Erreur de relais · +2 bases')+' · pense au « + Error » si c’est un de nos joueurs');break;
@@ -1141,7 +1334,7 @@ document.addEventListener('click',ev=>{
     case'advcopy':{const src=(db.opp||{})[v];if(src){db.opp[m.id]=Object.assign({},src,{sheetId:m.id,date:m.date,updated:0,by:''});render();toast('Line-up repris · vérifie puis enregistre')}break}
     case'advsave':{const old=(db.opp||{})[m.id]||{};const l=Object.assign({out:old.out||[],subs:old.subs||[]},readAdv(),{date:m.date});
       api({action:'saveOppLineup',sheetId:m.id,lineup:l}).then(r=>{db.opp=db.opp||{};db.opp[m.id]=r.lineup;save();render();toast('Line-up adverse enregistré');loadScout()}).catch(e=>toast(e.status?e.message:'Pas de réseau · réessaie'));break}
-    case'dhit':push({k:'DHIT',v});sprayAsk(v,null,true);toast({'1B':'Simple adverse','2B':'Double adverse','3B':'Triple adverse','HR':'Home run adverse'}[v]);break;
+    case'dhit':push(Object.assign({k:'DHIT',v},replay(m).pitcher?{pc:1}:{}));sprayAsk(v,null,true);toast({'1B':'Simple adverse','2B':'Double adverse','3B':'Triple adverse','HR':'Home run adverse'}[v]);break;
     case'drun':{const st=replay(m),i=+v;
       if(!st.dB[i]){push({k:'DR',i,a:'add'});break}
       const nxt=i<2&&!st.dB[i+1];
@@ -1163,6 +1356,16 @@ document.addEventListener('click',ev=>{
     case'togcount':db.settings.count=!showCount();save();render();break;
     case'note':push({k:'N',txt:v});toast('Note ajoutée');break;
     case'notetxt':{const x=document.getElementById('ntxt').value.trim();if(x)push({k:'N',txt:x});break}
+    case'mailprev':{const st=replay(m);const rows=recapRows(m,st).filter(r=>r.pa>0);
+      sheet(`<h3>Mails du récap</h3><p class="muted" style="margin:0">Seuls les joueurs qui ont coché « Mails du club » dans leur compte reçoivent un mail : leur récap perso (avec leur carte des frappes) ou le récap de l’équipe.</p>
+      <div id="mailsend" class="card" style="padding:10px 12px"><span class="muted">Chargement des destinataires…</span></div>
+      <div class="label" style="margin-top:4px">Aperçu</div>
+      <select id="mailwho"><option value="">Récap de l’équipe</option>${rows.map(r=>`<option value="${esc(r.id)}">${esc(nm(r.id))} · son récap</option>`).join('')}</select>
+      <div id="mailbox" class="muted">Chargement…</div><button class="btn" data-a="close">Fermer</button>`);
+      mailPreview(m,'');mailSendPanel(m);break}
+    case'mailsend':mailSend(m,false);break;
+    case'mailsendok':mailSend(m,v==='force',true);break;
+    case'mailresend':mailSend(m,true);break;
     case'copy':{const txt=recapText();navigator.clipboard?.writeText(txt).then(()=>toast('Récap copié'),()=>fallbackCopy(txt))||fallbackCopy(txt);break}
     case'export':exportFile();break;
     case'delm':{const x=db.matches[v];sheet(`<h3>Supprimer ce match ?</h3><p style="margin:0">${esc(x.opp)} · ${fmtDate(x.date)}</p><p class="muted" style="margin:0">Toutes les actions et stats de ce match seront effacées pour tout le staff. Les lancers de ce match ne compteront plus dans le total de la journée.</p><button class="btn" style="background:var(--out);color:#fff;border-color:var(--out)" data-a="delok" data-v="${v}">Supprimer définitivement</button><button class="btn" data-a="close">Annuler</button>`);break}
@@ -1178,7 +1381,9 @@ document.addEventListener('change',ev=>{
     l.subs=[...(l.subs||[]),{kind:'pos',inn:s0.inn,half:halfLab(s0),slot:String(i),who:pl,from,to,at:Date.now()}];db.opp[m.id]=l;render();
     api({action:'saveOppLineup',sheetId:m.id,lineup:l}).then(r=>{db.opp[m.id]=r.lineup;render();toast(`${pl.prenom||'#'+pl.num} → ${POSL[to]||to}`)}).catch(e=>toast(e.status?e.message:'Pas de réseau'));return}
   if(ev.target.id==='imp')importFile(ev.target.files[0]);
+  if(ev.target.id==='mailwho'){const m=M();if(m)mailPreview(m,ev.target.value);return}
   if(ev.target.id==='link'){syncDraft();const v=ev.target.value,c=db.cal.find(x=>x.id===v);draft.link=v;
+    if(c&&c.squad)draft.squad=c.squad;
     if(c){if(c.opp)draft.opp=c.opp;draft.home=c.loc==='domicile';draft.kind=/amical|tournoi/i.test((c.label||'')+' '+(c.opp||''))?'amical':'saison';
       const lu=db.lineups[v]||{},ok=id=>db.roster.some(p=>p.id===id),def=lu.defense||{};
       const bat=(lu.batting||[]).filter(id=>id&&ok(id));if(bat.length)draft.lineup=bat;
@@ -1189,7 +1394,48 @@ document.addEventListener('change',ev=>{
       toast(bat.length?'Composition reprise':'Pas encore de composition pour ce match')}
     render()}
 });
-function syncDraft(){const o=document.getElementById('opp'),d=document.getElementById('date');if(o)draft.opp=o.value;if(d)draft.date=d.value}
+
+/* Envoi réel des récaps (Gmail aujourd'hui, Brevo plus tard) : par paquets de 4, la tablette fabrique les cartes des frappes */
+let mailList=null;
+async function mailSendPanel(m){const box=document.getElementById('mailsend');if(!box)return;
+  try{const r=await api({action:'recapMailList',sheetId:m.id});mailList=r;drawMailList(m)}
+  catch(e){box.innerHTML=`<span class="muted">${esc(e.status?e.message:'Pas de réseau : réessaie dans un instant.')}</span>`}}
+function drawMailList(m,progress){const box=document.getElementById('mailsend');if(!box||!mailList)return;const r=mailList;
+  const hm=t=>{try{const d=new Date(t);return d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}catch(e){return''}};
+  const todo=r.recipients.filter(x=>!x.sent);
+  const rows=r.recipients.map(x=>`<div class="playerline" style="padding:5px 0"><span>${esc(x.name)} <span class="muted" style="font-size:13px">· ${x.kind==='me'?'récap perso'+(x.spray?' + frappes':''):'récap équipe'}</span></span><span style="font-size:13px;${x.sent?'color:var(--ok,#3fae74)':''}">${x.sent?'✓ envoyé '+hm(x.sent):'<span class="muted">à envoyer</span>'}</span></div>`).join('');
+  let act='';
+  if(!r.configured)act=`<p class="muted" style="margin:6px 0 0">Envoi pas encore activé : le propriétaire doit configurer les mails (appli › Administration › Mails).</p>`;
+  else if(progress)act=`<p style="margin:8px 0 0"><b>${esc(progress)}</b></p>`;
+  else if(!r.recipients.length)act=`<p class="muted" style="margin:6px 0 0">Personne n’a encore coché « Mails du club ».</p>`;
+  else if(todo.length)act=`<button class="btn primary" data-a="mailsend" style="margin-top:8px">Envoyer les récaps (${todo.length} joueur${todo.length>1?'s':''})</button>`;
+  else act=`<p style="margin:8px 0 0">Tout est parti ✓</p><button class="btn" data-a="mailresend" style="margin-top:6px">Renvoyer à tout le monde</button>`;
+  box.innerHTML=`<div style="font-weight:700;margin-bottom:4px">Destinataires (${r.recipients.length})</div>${rows||''}${act}`}
+let mailBusy=false;
+async function mailSend(m,force,confirmed){if(mailBusy||!mailList)return;
+  const list=force?mailList.recipients:mailList.recipients.filter(x=>!x.sent);if(!list.length)return;
+  if(!confirmed){const box=document.getElementById('mailsend');box.insertAdjacentHTML('beforeend',`<div class="card" style="margin-top:8px;padding:10px"><b>Envoyer ${list.length} mail${list.length>1?'s':''} maintenant ?</b><p class="muted" style="margin:4px 0 8px;font-size:13px">${force?'Ceux qui l’ont déjà reçu le recevront une 2e fois.':'Chacun reçoit son mail, personne ne voit les adresses des autres.'}</p><button class="btn primary" data-a="mailsendok" data-v="${force?'force':''}">Oui, envoyer</button></div>`);return}
+  mailBusy=true;let done=0,bad=0,authErr='';
+  try{for(let i=0;i<list.length;i+=4){const part=list.slice(i,i+4);drawMailList(m,`Envoi… ${done}/${list.length}`);
+      const items=[];for(const x of part)items.push({pid:x.pid,sprayImg:x.kind==='me'&&x.spray?(await sprayPng(m,x.pid))||undefined:undefined});
+      const r=await api({action:'sendRecapMails',sheetId:m.id,items,force:!!force});
+      r.results.forEach(x=>{if(x.ok)done++;else{bad++;if(/connexion refusée/.test(x.error||''))authErr=x.error}});if(authErr)break}
+    toast(bad?`${done} envoyé${done>1?'s':''}, ${bad} en échec`:`${done} mail${done>1?'s':''} envoyé${done>1?'s':''}`);if(authErr)toast('Mails : '+authErr)}
+  catch(e){toast(e.status?e.message:'Pas de réseau : les mails restants partiront quand tu relanceras l’envoi')}
+  finally{mailBusy=false;mailSendPanel(m)}}
+/* Carte des frappes d'un joueur en image (les messageries n'affichent pas le SVG) */
+function sprayPng(m,pid){return new Promise(res=>{try{
+  const pts=m.events.filter(e=>e.k==='PA'&&e.loc&&e.b===pid).map(e=>({loc:e.loc,res:e.res}));if(!pts.length||!window.DragonsSpray)return res('');
+  const svg=DragonsSpray.svg(pts,{max:512,r:9}).replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="820" ');
+  const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=1024;c.height=820;const x=c.getContext('2d');x.fillStyle='#ffffff';x.fillRect(0,0,1024,820);x.drawImage(img,0,0,1024,820);res(c.toDataURL('image/png'))};
+  img.onerror=()=>res('');img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)}catch(e){res('')}})}
+async function mailPreview(m,pid){const box=document.getElementById('mailbox');if(!box)return;box.textContent='Chargement…';
+  try{const img=pid?await sprayPng(m,pid):'';const r=await api({action:'previewRecapMail',sheetId:m.id,player:pid||undefined,sprayImg:img||undefined,site:location.origin});
+    box.innerHTML=`<div style="font-size:14px;margin:4px 0 8px"><b>Objet :</b> ${esc(r.subject)}<br><span class="muted">${r.recipients?`${r.recipients} joueur${r.recipients>1?'s':''} l’ont demandé`:'Personne ne l’a encore demandé dans « Mails du club »'}</span></div><iframe title="Aperçu du mail" style="width:100%;height:60vh;border:0;border-radius:10px;background:#f3f6f4"></iframe>`;
+    box.querySelector('iframe').srcdoc=r.html}
+  catch(e){box.textContent=e.status?e.message:'Pas de réseau : réessaie dans un instant.'}}
+function syncDraft(){const o=document.getElementById('opp'),d=document.getElementById('date');if(o)draft.opp=o.value;if(d)draft.date=d.value;
+  const mr=document.querySelectorAll('[data-mr]');if(mr.length){const base=JSON.parse(JSON.stringify(draft.mercy||(draft.kind==='amical'?[]:MERCY_PRESET[+draft.inns||7])));mr.forEach(el=>{const[i,k]=el.dataset.mr.split(':');const n=parseInt(el.value,10);if(base[+i]&&n>0)base[+i][k]=n});draft.mercy=base}}
 function fallbackCopy(txt){sheet(`<h3>Récap</h3><p class="muted" style="margin:0">Sélectionne et copie le texte.</p><textarea id="cp" style="width:100%;min-height:50vh;font:14px/1.4 var(--f-body);background:var(--surface);color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:10px">${esc(txt)}</textarea><button class="btn" data-a="close">Fermer</button>`);const ta=document.getElementById('cp');ta.focus();ta.select()}
 function exportFile(){
   const blob=new Blob([JSON.stringify({matches:db.matches,settings:db.settings},null,1)],{type:'application/json'});

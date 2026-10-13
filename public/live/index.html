@@ -110,6 +110,7 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 @keyframes roll{to{offset-distance:100%;transform:rotate(720deg)}}
 .sound{font:inherit;font-size:12px;color:var(--faint);background:none;border:0;cursor:pointer;text-decoration:underline}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+body.testmode::before{content:"MODE TEST · matchs de l’espace test, pas le vrai live";display:block;text-align:center;font:700 13px/1 system-ui,sans-serif;padding:7px 10px;color:#1a1406;background:repeating-linear-gradient(-45deg,#f2b632 0 14px,#e0a51f 14px 28px)}
 </style>
 </head>
 <body>
@@ -118,6 +119,7 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 <script src="/logos/logos.js"></script>
 <script src="/match/scorecard.js"></script>
 <script>
+const TEST=new URLSearchParams(location.search).get('test')==='1';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const G='#3fae74',C='#e7efea',GR='#2d6b37';
@@ -126,7 +128,7 @@ const POLL=15000;
 
 async function fetchLive(){
   try{
-    const r=await fetch('/api/live',{cache:'no-store'});
+    const r=await fetch('/api/live'+(TEST?'?test=1':''),{cache:'no-store'});
     const d=await r.json();
     games=d.games||[];nextM=d.next||null;fails=0;lastFetch=Date.now();
   }catch(e){fails++}
@@ -165,19 +167,20 @@ function renderWait(app,n){const dt=new Date(n.day+'T12:00:00');
   const c=countTxt(n);
   app.innerHTML=`<div class="top"><div class="brand"><img src="/logos/dragons.png" alt="" width="32" height="32" style="width:32px;height:32px;object-fit:contain">Dragons de Ronchin</div></div>
   <div class="wait"><div class="wtag ${n.today?'':'soft'}">${n.today?'⚾ Jour de match':'Prochain match'}</div>${vsHTML(n)}
-  <div><div class="wteams">Dragons – ${esc(n.opp)}</div><div class="wmeta">${when}${n.time?' · '+n.time.replace(':','h'):''} · ${n.home?'à Ronchin':'à l’extérieur'}</div></div>
+  <div>${n.squadName?`<div class="wsmall" style="margin-bottom:2px">${esc(n.squadName)}</div>`:''}<div class="wteams">Dragons – ${esc(n.opp)}</div><div class="wmeta">${when}${n.time?' · '+n.time.replace(':','h'):''} · ${n.home?'à Ronchin':'à l’extérieur'}</div></div>
   ${c?`<div><div class="wsmall">${n.today&&c!=='C’est l’heure !'?'Premier lancer':''}</div><div class="wcount" id="wcount">${c}</div></div>`:''}
   <div class="wsmall">${n.today?'Le score et les actions s’afficheront ici dès le premier lancer, sans recharger la page.':'Le jour du match, le score s’affichera ici en direct.'}</div></div>`}
 setInterval(()=>{const el=document.getElementById('wcount');if(el&&nextM){el.textContent=countTxt(nextM)}},30000);
 function render(){
   const app=$('app'),g=games.find(x=>x.id===cur);
+  document.body.classList.toggle('testmode',TEST);
   if(g&&g.over){renderFinal(app,g);return}
   if(!g&&nextM){renderWait(app,nextM);return}
   if(!g){app.innerHTML=`<div class="top"><div class="brand"><div class="logo">DR</div>Dragons de Ronchin</div></div><div class="empty"><h1>Pas de match en direct</h1>Reviens pendant le prochain match des Dragons : le score s’affichera ici tout seul.</div>`;return}
   const us=sum(g.us),them=sum(g.them),inns=Math.max(7,g.inn||1);
   const ourFirst=g.first==='att';
   const half=g.over?'':(g.half===g.first?'Top':'Bottom')+' '+g.inn;
-  const tabs=games.length>1?`<div class="tabs">${games.map(x=>`<button class="${x.id===cur?'on':''}" data-g="${esc(x.id)}">Dragons – ${esc(x.opp)}</button>`).join('')}</div>`:'';
+  const tabs=games.length>1?`<div class="tabs">${games.map(x=>`<button class="${x.id===cur?'on':''}" data-g="${esc(x.id)}">${x.squadName?esc(x.squadName)+' · ':''}Dragons – ${esc(x.opp)}</button>`).join('')}</div>`:'';
   let mid='';
   if(g.over){
     mid=`<div class="card" style="margin-top:12px;text-align:center"><div class="final">${us>them?'Victoire des Dragons !':us<them?'Défaite':'Match nul'}</div><button data-img="1" style="margin-top:12px;font:600 15px var(--f);background:var(--gold);color:#06130c;border:0;border-radius:10px;padding:12px 18px;cursor:pointer">Image du score à partager</button></div>`+
@@ -193,7 +196,7 @@ function render(){
       <div style="display:flex;align-items:center;gap:10px">${window.DragonsLogos?DragonsLogos.badge(g.opp,40):''}<div class="big" style="font-size:19px">${esc(shortOpp(g.opp))} en attaque</div></div>
       ${g.oppBatter?`<div class="lbl" style="margin-top:6px">Au bâton : <b style="color:var(--ink)">${esc(g.oppBatter)}</b></div>`:''}
       ${g.pitcher?`<div class="lbl" style="margin-top:6px">Pitcher : ${esc(g.pitcher)}</div>`:''}
-      <div class="lbl" style="margin-top:6px">Outs${[0,1,2].map(i=>`<span class="o ${(g.dOuts||0)>i?'on':''}"></span>`).join('')}</div>
+      <div class="lbl" style="margin-top:6px">Outs${[0,1,2].map(i=>`<span class="o ${(g.dOuts||0)>i?'on':''}"></span>`).join('')}${g.dCount?` · Compte ${+g.dCount[0]}-${+g.dCount[1]}`:''}</div>
       <div class="lbl" style="margin-top:6px">${+(g.them?.[g.inn]||0)} point(s) adverse(s) cet inning</div></div></div>`;
   }
   const batted=ourRow=>g.over?true:(ourRow?(g.att||(ourFirst&&!g.att)):(!g.att||(!ourFirst&&g.att)));
@@ -202,7 +205,7 @@ function render(){
     return `<td class="${k===g.inn&&!g.over?'cur':''}">${show}</td>`}).join('')}<td class="r">${sum(o)}</td></tr>`;
   app.innerHTML=`${tabs}<div class="top"><div class="brand"><div class="logo">DR</div>Dragons de Ronchin</div><span class="badge ${g.over?'done':''}"><i></i>${g.over?'Terminé':'En direct'}</span></div>
   <div class="card"><div class="score">
-    <div><div class="team">Dragons</div><div class="pts">${us}</div></div>
+    <div><div class="team">Dragons${g.squadName?` <span style="font-size:.7em;opacity:.75">· ${esc(g.squadName)}</span>`:''}</div><div class="pts">${us}</div></div>
     <div class="mid">${g.over?'<b>Final</b>':`<b>${half}</b>${g.att?'Attaque':'Défense'}`}</div>
     <div style="text-align:right"><div class="team">${esc(g.opp)}</div><div class="pts">${them}</div></div>
   </div>

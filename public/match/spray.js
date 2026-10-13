@@ -1,7 +1,7 @@
 /* Carte des frappes (spray chart) — partagé entre la feuille de match et la page Adversaires.
    Coordonnées stockées en 0..1 sur le terrain dessiné (marbre en bas au centre). */
 (function () {
-  const W = 300, H = 290, HX = 150, HY = 272, R = 205, VY = 50; // R = clôture, VY = haut du cadre affiché
+  const W = 300, H = 290, HX = 150, HY = 272, R = 205, VY = 38; // R = clôture, VY = haut du cadre affiché
   const rad = Math.PI / 180;
   const pt = (deg, d) => [HX + Math.sin(deg * rad) * d, HY - Math.cos(deg * rad) * d];
   const f = (n) => Math.round(n * 10) / 10;
@@ -37,7 +37,7 @@
   function fix(loc, res) {
     let dx = loc[0] * W - HX, dy = HY - loc[1] * H;
     let a = Math.atan2(dx, dy) / rad, d = Math.hypot(dx, dy);
-    if (res === "HR") { if (d < R + 6) d = R + 10; }
+    if (res === "HR") { d = Math.min(R + 14, Math.max(R + 9, d)); } // juste derrière la clôture, toujours dans le cadre affiché
     else if (d > R - 6) d = R - 8;
     if (cat(res) === "hit" && Math.abs(a) > 44) a = Math.sign(a) * 44;
     if (res === "HR" && Math.abs(a) > 44) a = Math.sign(a) * 44;

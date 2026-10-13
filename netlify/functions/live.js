@@ -37,9 +37,9 @@ function parseTime(txt) {
   if (!m || +m[1] > 23) return null;
   return `${pad(m[1])}:${m[2] || "00"}`;
 }
-async function nextMatch(store, playedToday) {
+async function nextMatch(store, playedToday, prefix) {
   try {
-    const raw = await store.get("dragons-presence-app-v1");
+    const raw = await store.get(prefix + "dragons-presence-app-v1");
     if (!raw) return null;
     const st = JSON.parse(raw);
     const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
@@ -47,7 +47,7 @@ async function nextMatch(store, playedToday) {
     const limit = new Date(Date.now() + 7 * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
     const list = (st.matches || [])
       .filter((m) => !m.cancelled && m.opponent)
-      .map((m) => ({ opp: m.opponent, label: m.label || "", day: parseDate(m.date, m.season), time: parseTime(m.time), home: m.location === "domicile" }))
+      .map((m) => ({ opp: m.opponent, label: m.label || "", day: parseDate(m.date, m.season), time: parseTime(m.time), home: m.location === "domicile", squadName: (st.squads || []).length > 1 ? ((st.squads || []).find((q) => q.id === m.squad) || {}).name || "" : "" }))
       .filter((m) => m.day && m.day >= today && m.day <= limit)
       // match du jour déjà joué (live terminé aujourd'hui) : on passe au suivant
       .filter((m) => !(playedToday && m.day === today && (!m.time || m.time <= nowHM)))
@@ -56,7 +56,10 @@ async function nextMatch(store, playedToday) {
   } catch (e) { return null; }
 }
 
-export default async () => {
+export default async (req) => {
+  // /api/live?test=1 : matchs de l'espace test (jamais mélangés avec le vrai live)
+  let prefix = "";
+  try { if (req && new URL(req.url).searchParams.get("test") === "1") prefix = "test/"; } catch (e) { /* url illisible : vrai live */ }
   const headers = {
     "Content-Type": "application/json",
     "Cache-Control": "public, max-age=5",
@@ -64,7 +67,7 @@ export default async () => {
   };
   try {
     const store = getBlobStore();
-    const { blobs } = await store.list({ prefix: LIVE_PREFIX });
+    const { blobs } = await store.list({ prefix: prefix + LIVE_PREFIX });
     const games = [];
     const todayP = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
     let playedToday = false;
@@ -81,8 +84,8 @@ export default async () => {
     games.sort((a, b) => (b.updated || 0) - (a.updated || 0));
     // Si un match est en cours, on n'affiche que lui (l'image d'un match fini disparaît).
     if (games.some((g) => !g.over)) games.splice(0, games.length, ...games.filter((g) => !g.over));
-    const next = games.some((g) => !g.over) ? null : await nextMatch(store, playedToday);
-    return new Response(JSON.stringify({ games: games.slice(0, 3), next, now: Date.now() }), { status: 200, headers });
+    const next = games.some((g) => !g.over) ? null : await nextMatch(store, playedToday, prefix);
+    return new Response(JSON.stringify({ games: games.slice(0, 3), next, now: Date.now(), test: !!prefix }), { status: 200, headers });
   } catch (e) {
     return new Response(JSON.stringify({ games: [], error: "indisponible" }), {
       status: 200,
