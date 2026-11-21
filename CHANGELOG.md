@@ -3,6 +3,10 @@
 Règle : correction ou petit ajout → version mineure (1.0 → 1.1) ; grosse nouveauté → version majeure (→ 2.0).
 La version est affichée en bas de l'appli et de la feuille de match (fichiers `public/version.js` et `APP_VERSION` dans `src/App.jsx`).
 
+## 3.9 — 21 novembre 2026 (coachs visibles dans l'écran Joueurs)
+- Écran Joueurs : chaque encadré d'équipe affiche ses coachs et son staff (« Coach · Loïc DIDAT », « Staff · Thibaut VANDENBERGHE »), d'après Administration › Droits des comptes. Sans coach : « Pas de coach · à définir dans Administration › Droits des comptes ».
+- Dans la liste, un badge « Coach 2 » / « Staff 1 » à côté du nom des joueurs qui coachent une équipe.
+
 ## 3.8 — 21 novembre 2026 (correctif Suivi + un classement par équipe)
 - **Correctif** : l'écran Suivi plantait (« Une erreur a arrêté l'affichage de cette page ») depuis la 3.4, à cause d'une ligne retirée au mauvais endroit. Corrigé. Ajout de deux contrôles systématiques avant chaque livraison : une vérification de tout le code (aucune variable utilisée sans être déclarée) et un test qui ouvre tous les écrans pour chaque type de compte (propriétaire, coachs, entraîneur, joueur), sur téléphone et ordinateur, et échoue si l'écran d'erreur apparaît.
 - **Classement** : un classement séparé par équipe, titré avec sa ligue (le « niveau » de l'équipe dans Administration : D3, Régional 1, Régional 2…). En « Tout le club », les classements des équipes s'affichent les uns sous les autres au lieu d'être mélangés dans un seul tableau (le rang et l'écart GB se calculent dans chaque ligue).

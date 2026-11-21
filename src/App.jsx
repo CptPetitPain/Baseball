@@ -135,7 +135,7 @@ const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
 }));
 
 const STAFF_ROLES = ["coach", "owner"];
-export const APP_VERSION = "3.8"; // garder identique à public/version.js
+export const APP_VERSION = "3.9"; // garder identique à public/version.js
 function homeScreen(role) {
   return isStaffRole(role) || role === "scorer" ? "composition" : "player";
 }
@@ -4370,6 +4370,13 @@ function PlayersImport({ state, token, onState }) {
   );
 }
 
+/* Coachs / staff d'une équipe, d'après les comptes (Administration › Droits des comptes) */
+function staffOfSquad(state, sqId) {
+  return Object.entries(state.accounts || {}).filter(([, a]) => ["coach", "staff"].includes((a.squads || {})[sqId])).map(([u, a]) => {
+    const p = a.playerId ? state.roster.find((r) => r.id === a.playerId) : null;
+    return { username: u, playerId: a.playerId || null, role: a.squads[sqId], name: p ? `${p.prenom} ${p.nom}` : a.label || u };
+  }).sort((x, y) => (x.role === y.role ? x.name.localeCompare(y.name) : x.role === "coach" ? -1 : 1));
+}
 function MembersView({ state, squads, squadSel, access, onSetMember, busy }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -4385,6 +4392,9 @@ function MembersView({ state, squads, squadSel, access, onSetMember, busy }) {
     .filter((p) => filter === "all" || (filter === "none" ? cols.every((q) => !memberOf(state, p.id, q.id)) : memberOf(state, p.id, filter)))
     .sort((a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom));
   const canCol = (q) => canSqC(access, q.id, "roster");
+  // joueurs qui sont aussi coach / staff d'une équipe
+  const coachTags = {};
+  cols.forEach((q) => staffOfSquad(state, q.id).forEach((x) => { if (x.playerId) (coachTags[x.playerId] = coachTags[x.playerId] || []).push({ sq: q.id, role: x.role, name: q.name, color: q.color, short: q.name.replace(/[^0-9]/g, "") || q.name.slice(0, 3) }); }));
   return (
     <div>
       <div className="card wide">
@@ -4397,6 +4407,12 @@ function MembersView({ state, squads, squadSel, access, onSetMember, busy }) {
           {counts.map(({ q, reg, renf }) => (
             <div className="ms-card" key={q.id} style={{ "--sq": q.color }}>
               <div className="ms-name"><i aria-hidden="true" />{q.name}{q.level ? <span> · {q.level}</span> : null}</div>
+              {(() => {
+                const st = staffOfSquad(state, q.id);
+                return st.length ? (
+                  <div className="ms-staff">{st.map((x) => <span key={x.username} className={"ms-coach " + x.role}>{x.role === "coach" ? "Coach" : "Staff"} · {x.name}</span>)}</div>
+                ) : <div className="ms-staff none">Pas de coach{access && access.owner ? " · à définir dans Administration › Droits des comptes" : ""}</div>;
+              })()}
               <div className="ms-n"><b className={reg >= (q.target || 12) ? "ok" : "low"}>{reg}</b> / {q.target || 12} habituels · {renf} renfort{renf > 1 ? "s" : ""}</div>
               {reg < (q.target || 12) && <div className="ms-warn">Il en manque {(q.target || 12) - reg} pour l'objectif.</div>}
             </div>
@@ -4418,7 +4434,9 @@ function MembersView({ state, squads, squadSel, access, onSetMember, busy }) {
           </div>
           {rows.map((p) => (
             <div className="mt-row" key={p.id}>
-              <span className="mt-name"><b>{p.prenom} {p.nom}</b>{p.numero ? <span className="recap-num"> #{p.numero}</span> : null}</span>
+              <span className="mt-name"><b>{p.prenom} {p.nom}</b>{p.numero ? <span className="recap-num"> #{p.numero}</span> : null}
+                {coachTags[p.id] && coachTags[p.id].map((t) => <span key={t.sq} className="mt-coach" style={{ "--sq": t.color }} title={`${t.role === "coach" ? "Coach" : "Staff"} de l'${t.name}`}>{t.role === "coach" ? "Coach" : "Staff"} {t.short}</span>)}
+              </span>
               {cols.map((q) => {
                 const v = memberOf(state, p.id, q.id);
                 return (
@@ -4851,6 +4869,11 @@ const CSS = `
 
 .members-sum { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .ms-card { flex: 1 1 180px; border: 1.5px solid var(--sq, var(--line)); border-radius: 12px; padding: 10px 12px; }
+.ms-staff { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ms-staff.none { font-size: 12px; color: var(--muted); font-style: italic; }
+.ms-coach { font-size: 11.5px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--sq, var(--line)); white-space: nowrap; }
+.ms-coach.coach { font-weight: 700; }
+.mt-coach { display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--sq); color: var(--sq); vertical-align: 1px; }
 .ms-card.none { border-style: dashed; border-color: var(--line); }
 .ms-name { display: flex; align-items: center; gap: 6px; font-weight: 700; }
 .ms-name i { width: 9px; height: 9px; border-radius: 50%; background: var(--sq); }
