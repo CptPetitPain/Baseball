@@ -135,7 +135,7 @@ const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
 }));
 
 const STAFF_ROLES = ["coach", "owner"];
-export const APP_VERSION = "3.7"; // garder identique à public/version.js
+export const APP_VERSION = "3.8"; // garder identique à public/version.js
 function homeScreen(role) {
   return isStaffRole(role) || role === "scorer" ? "composition" : "player";
 }
@@ -862,17 +862,23 @@ export default function DragonsApp() {
         )}
 
         {session && screen === "standings" && (
-          <StandingsView
-            standings={(state.standings || []).filter((t) => squadSel === "all" || t.squad === squadSel)}
-            squads={squads}
-            showSquad={multi && squadSel === "all"}
-            canEditTeam={(t) => canSqC(access, t.squad, "manage")}
-            canAdd={squadSel !== "all" ? canSqC(access, squadSel, "manage") : canManage}
-            onUpdateField={(teamId, field, value) => updateTeamField(teamId, field, value)}
-            onAddTeam={(season) => callMutation("addTeam", { season, squad: squadSel !== "all" ? squadSel : undefined })}
-            onDeleteTeam={(teamId) => deleteTeam(teamId)}
-            busy={busy}
-          />
+          // une ligue par équipe : un classement séparé pour chacune (en « Tout le club », les uns sous les autres)
+          (multi && squadSel === "all" ? visSquads : squads.filter((q) => q.id === squadSel || !multi)).map((q) => (
+            <StandingsView
+              key={q.id}
+              title={multi ? `${q.name}${q.level ? " · " + q.level : ""}` : ""}
+              color={multi ? q.color : ""}
+              standings={(state.standings || []).filter((t) => t.squad === q.id)}
+              squads={squads}
+              showSquad={false}
+              canEditTeam={(t) => canSqC(access, t.squad, "manage")}
+              canAdd={canSqC(access, q.id, "manage")}
+              onUpdateField={(teamId, field, value) => updateTeamField(teamId, field, value)}
+              onAddTeam={(season) => callMutation("addTeam", { season, squad: q.id })}
+              onDeleteTeam={(teamId) => deleteTeam(teamId)}
+              busy={busy}
+            />
+          ))
         )}
 
         {session && screen === "history" && (
@@ -1650,6 +1656,7 @@ function CoachView({
     [state.matches, effectiveSuiviSeason, squadSel]
   );
   const [activeMatch, setActiveMatch] = useState((state.matches[0] || {}).id);
+  const [showAll, setShowAll] = useState(false);
   const curMatch = state.matches.find((m) => m.id === activeMatch) || null;
   const curSq = curMatch ? curMatch.squad : null;
   const curSquad = curSq ? squadById(state, curSq) : null;
@@ -3244,7 +3251,7 @@ function ResultsView({ matches, squads, canEditMatch, onSetInning }) {
 /* Standings / classement view                                         */
 /* ------------------------------------------------------------------ */
 
-function StandingsView({ standings, squads, showSquad, canEditTeam, canAdd, onUpdateField, onAddTeam, onDeleteTeam, busy }) {
+function StandingsView({ title, color, standings, squads, showSquad, canEditTeam, canAdd, onUpdateField, onAddTeam, onDeleteTeam, busy }) {
   const canEdit = !!canAdd || (standings || []).some((t) => canEditTeam && canEditTeam(t));
   const seasonCtx = useContext(SeasonContext);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -3283,9 +3290,8 @@ function StandingsView({ standings, squads, showSquad, canEditTeam, canAdd, onUp
   }
 
   return (
-    <div className="card wide">
-      <h2>Classement</h2>
-      {showSquad && <div className="hint" style={{ marginBottom: 10 }}>Choisis une équipe en haut pour voir son classement : chaque équipe a sa propre ligue.</div>}
+    <div className="card wide" style={color ? { borderTop: `3px solid ${color}` } : undefined}>
+      <h2>Classement{title ? <span style={{ color: color || undefined }}> · {title}</span> : null}</h2>
       {!canEdit && <div className="hint" style={{ marginBottom: 12 }}>Vue en lecture seule — mis à jour manuellement par le coaching staff d'après le classement officiel.</div>}
       {canEdit && (
         <div className="hint" style={{ marginBottom: 14 }}>
@@ -4043,7 +4049,6 @@ function SelectionView({ state, access, token, squadSel, initialWk, onState }) {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [confirm, setConfirm] = useState(false);
-  const [showAll, setShowAll] = useState(false);
   if (!wks.length) return <div className="card wide"><h2>Roster du week-end</h2><div className="hint">Aucun match à venir avec une date.</div></div>;
   const rec = ((state.rosters || {})[wk]) || {};
   const entry = rec[sq] || { status: "draft", picks: [] };
@@ -5074,7 +5079,7 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0e1511; }
 .pos-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
 .pos-editor .field, .pos-editor select { min-width: 0; width: 100%; }
 /* Garde-fou : un champ ne dépasse jamais de sa carte, quelle que soit la largeur */
-.card select, .card input, .card textarea { max-width: 100%; box-sizing: border-box; }
+.card select, .card input, .card textarea { max-width: 100%; box-sizing: border-box; min-width: 0; }
 .card label, .card .field { min-width: 0; }
 @media (max-width: 600px) { .pos-editor { grid-template-columns: 1fr; } .row-2 { grid-template-columns: 1fr; } }
 
