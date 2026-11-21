@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
 import { callApi } from "./api.js";
+import { readCalendarFile, analyseCalendar, norm as calNorm, analysePlayers } from "./calendarImport.js";
 
 const LOGO_DATA_URI = "data:image/jpeg;base64,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";
 
@@ -134,7 +135,7 @@ const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
 }));
 
 const STAFF_ROLES = ["coach", "owner"];
-export const APP_VERSION = "3.2"; // garder identique à public/version.js
+export const APP_VERSION = "3.7"; // garder identique à public/version.js
 function homeScreen(role) {
   return isStaffRole(role) || role === "scorer" ? "composition" : "player";
 }
@@ -471,6 +472,23 @@ export default function DragonsApp() {
       return t;
     } catch (e) { return ""; }
   });
+  // Lien direct vers un vote MVP : /?mvp=<id du match>
+  const [mvpTarget, setMvpTarget] = useState(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get("mvp") || "";
+      if (/^[a-z0-9]{4,24}$/.test(q)) { window.localStorage.setItem("dragons-mvp-target", q); return q; }
+      return window.localStorage.getItem("dragons-mvp-target") || "";
+    } catch (e) { return ""; }
+  });
+  // Lien des mails « roster » : /?selection=<samedi du week-end>
+  const [selTarget] = useState(() => { try { const q = new URLSearchParams(window.location.search).get("selection") || ""; return /^\d{4}-\d{2}-\d{2}$/.test(q) ? q : ""; } catch (e) { return ""; } });
+  useEffect(() => {
+    if (selTarget && session) { setScreen("selection"); try { window.history.replaceState(null, "", window.location.pathname); } catch (e) { /* ignore */ } }
+  }, [selTarget, !!session]); // eslint-disable-line
+  function endMvpTarget() {
+    setMvpTarget("");
+    try { window.localStorage.removeItem("dragons-mvp-target"); window.history.replaceState(null, "", window.location.pathname); } catch (e) { /* ignore */ }
+  }
   function endReset() {
     setResetTok("");
     try { window.history.replaceState(null, "", window.location.pathname); } catch (e) { /* ignore */ }
@@ -678,6 +696,7 @@ export default function DragonsApp() {
     { key: "composition", label: "Composition" },
     staffLike ? { key: "coach", label: "Suivi" } : null,
     staffLike && (multi || canAnyC(access, "roster")) ? { key: "members", label: "Joueurs" } : null,
+    staffLike && squads.length > 1 ? { key: "selection", label: "Roster du week-end" } : null,
     canManage ? { key: "matches", label: "Matchs" } : null,
     { key: "roster", label: "Présences" },
     { key: "results", label: "Résultats" },
@@ -772,6 +791,7 @@ export default function DragonsApp() {
 
         {!session && !resetTok && screen === "login" && (
           <LoginView
+            hint={mvpTarget ? "🏅 Connecte-toi pour voter au MVP du match." : ""}
             onLogin={doLogin}
             onGoSignup={() => { setError(""); setScreen("signup"); }}
             error={error}
@@ -792,9 +812,12 @@ export default function DragonsApp() {
 
         {session && error && <div className="error card wide" role="alert">{error}</div>}
 
+        {session && mvpTarget && <MvpLinkCard token={authToken} sheetId={mvpTarget} myId={session.playerId} onClose={endMvpTarget} />}
+
         {session && screen === "player" && me && (
           <PlayerView
             token={authToken}
+            mvpTarget={mvpTarget}
             player={me}
             state={state}
             {...sqProps}
@@ -879,6 +902,13 @@ export default function DragonsApp() {
           />
         )}
 
+        {session && screen === "selection" && staffLike && (
+          <SelectionView state={state} access={access} token={authToken} squadSel={squadSel} initialWk={selTarget} onState={setState} />
+        )}
+
+        {session && screen === "members" && access && access.owner && (
+          <PlayersImport state={state} token={authToken} onState={setState} />
+        )}
         {session && screen === "members" && staffLike && (
           <MembersView state={state} {...sqProps} busy={busy}
             onSetMember={(playerId, squad, value) => callMutation("setMember", { playerId, squad, value })} />
@@ -897,6 +927,9 @@ export default function DragonsApp() {
           <LineupView state={state} {...sqProps} isStaff={staffLike} scorer={isScorerOnly} token={authToken} />
         )}
 
+        {session && screen === "matches" && canManage && (
+          <CalendarImport state={state} access={access} token={authToken} squadSel={squadSel} onState={setState} />
+        )}
         {session && screen === "matches" && canManage && (
           <MatchesView
             token={authToken}
@@ -930,7 +963,7 @@ export default function DragonsApp() {
 /* Login                                                               */
 /* ------------------------------------------------------------------ */
 
-function LoginView({ onLogin, onGoSignup, error, busy }) {
+function LoginView({ onLogin, onGoSignup, error, busy, hint }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [forgot, setForgot] = useState(false);
@@ -938,6 +971,7 @@ function LoginView({ onLogin, onGoSignup, error, busy }) {
   return (
     <div className="card auth-card">
       <h2>Connexion</h2>
+      {hint && <div className="mvp-login-hint">{hint}</div>}
       <label className="field">
         <span>Identifiant</span>
         <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex: prénom.nom" />
@@ -1103,13 +1137,14 @@ function MailPrefsCard({ player, onSave, busy }) {
   const [email, setEmail] = useState(cur.email || "");
   const [me, setMe] = useState(!!cur.me);
   const [team, setTeam] = useState(!!cur.team);
+  const [conv, setConv] = useState(cur.conv !== false);
   const [msg, setMsg] = useState("");
   const valid = !email || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
-  const dirty = email.trim().toLowerCase() !== (cur.email || "") || me !== !!cur.me || team !== !!cur.team;
+  const dirty = email.trim().toLowerCase() !== (cur.email || "") || me !== !!cur.me || team !== !!cur.team || conv !== (cur.conv !== false);
   return (
     <div className="card">
       <h2>Mails du club</h2>
-      <div className="hint" style={{ marginTop: 0, marginBottom: 10 }}>Tu ne reçois que ce que tu coches. Rien n'est coché par défaut, et tu peux changer d'avis quand tu veux.</div>
+      <div className="hint" style={{ marginTop: 0, marginBottom: 10 }}>Tu ne reçois que ce que tu coches, et tu peux changer d'avis quand tu veux.</div>
       <label className="mail-field">Ton adresse mail
         <input type="email" inputMode="email" autoComplete="email" value={email} placeholder="prenom.nom@exemple.fr" onChange={(e) => { setEmail(e.target.value); if (!e.target.value) { setMe(false); setTeam(false); } }} />
       </label>
@@ -1122,10 +1157,14 @@ function MailPrefsCard({ player, onSave, busy }) {
         <input type="checkbox" checked={team} disabled={!email} onChange={(e) => setTeam(e.target.checked)} />
         <span><b>Le récap de l'équipe</b><br /><small>Score par manche, les tops du match et les stats de tout le monde</small></span>
       </label>
-      {email && !me && !team && <div className="hint">Aucune case cochée : on garde ton adresse (elle sert pour le mot de passe oublié) mais tu ne recevras pas de récap.</div>}
+      <label className={"mail-opt" + (email ? "" : " off")}>
+        <input type="checkbox" checked={conv} disabled={!email} onChange={(e) => setConv(e.target.checked)} />
+        <span><b>Ma convocation du week-end</b><br /><small>Quand un coach te retient : ton équipe, les matchs (date, heure, adversaire) et les coéquipiers</small></span>
+      </label>
+      {email && !me && !team && !conv && <div className="hint">Aucune case cochée : on garde ton adresse (elle sert pour le mot de passe oublié) mais tu ne recevras pas de récap.</div>}
       {msg && <div className="hint">{msg}</div>}
       <button className="btn-primary small" style={{ marginTop: 8 }} disabled={busy || !dirty || !valid}
-        onClick={async () => { await onSave({ email: email.trim(), me, team }); setMsg("Enregistré."); }}>Enregistrer</button>
+        onClick={async () => { await onSave({ email: email.trim(), me, team, conv }); setMsg("Enregistré."); }}>Enregistrer</button>
     </div>
   );
 }
@@ -1335,7 +1374,7 @@ function SignupView({ roster, claimedPlayerIds, onSubmit, onGoLogin, error, busy
 /* ------------------------------------------------------------------ */
 
 const WHY = [["d3", "Je joue en D3"], ["blesse", "Blessé"], ["dispo", "Pas dispo"]];
-function PlayerView({ token, player, state, squads, access, matches, presence, positions, onSetPresence, onAnswerCall, onSetVehicule, onSetPosition, onSetNumero, onSetLiveConsent, onSetMailPrefs, onChangePassword, layout, busy }) {
+function PlayerView({ token, mvpTarget, player, state, squads, access, matches, presence, positions, onSetPresence, onAnswerCall, onSetVehicule, onSetPosition, onSetNumero, onSetLiveConsent, onSetMailPrefs, onChangePassword, layout, busy }) {
   const multi = (squads || []).length > 1;
   const mine = access ? access.member || {} : {};
   const inMySquad = (m) => !!mine[m.squad] || !!calledFor(state, m.id, player.id);
@@ -1392,7 +1431,9 @@ function PlayerView({ token, player, state, squads, access, matches, presence, p
         );
       })}
 
-      <MvpVoteCard token={token} myId={player.id} />
+      <WeekendCard state={state} playerId={player.id} />
+
+      <MvpVoteCard token={token} myId={player.id} member={access ? access.member : null} hideId={mvpTarget} />
 
       <div className="card">
         <h2>Mes présences</h2>
@@ -1609,7 +1650,6 @@ function CoachView({
     [state.matches, effectiveSuiviSeason, squadSel]
   );
   const [activeMatch, setActiveMatch] = useState((state.matches[0] || {}).id);
-  const [showAll, setShowAll] = useState(false);
   const curMatch = state.matches.find((m) => m.id === activeMatch) || null;
   const curSq = curMatch ? curMatch.squad : null;
   const curSquad = curSq ? squadById(state, curSq) : null;
@@ -3462,6 +3502,7 @@ function MvpBox({ rc, myId, token, onChange }) {
           ? <button className="btn-ghost small" disabled={busy} onClick={() => run("closeMvpVote", {})}>Clôturer</button>
           : <button className="btn-ghost small" disabled={busy} onClick={() => run("closeMvpVote", { reopen: true })}>Rouvrir 3 j</button>)}
       </div>
+      {mv.canPick && mv.open && <MvpShare rc={rc} closesAt={mv.closesAt} />}
       {mv.canVote && (
         <div className="mvp-vote">
           <div className="mvp-sub" style={{ marginBottom: 6 }}>{mv.myVote ? "Ton vote (tu peux changer jusqu'à la clôture) :" : "Ton vote : qui a été le meilleur ? (pas toi 😉)"}</div>
@@ -3478,27 +3519,102 @@ function MvpBox({ rc, myId, token, onChange }) {
 }
 
 /* Accueil joueur : les votes MVP en attente (matchs joués, vote ouvert, pas encore voté) */
-function MvpVoteCard({ token, myId }) {
+function mvpLink(id) {
+  try { return window.location.origin + "/?mvp=" + id; } catch (e) { return "/?mvp=" + id; }
+}
+function MvpShare({ rc, closesAt }) {
+  const [copied, setCopied] = useState(false);
+  const us = recapSum(rc.us), them = recapSum(rc.them);
+  let until = "";
+  try { until = new Date(closesAt).toLocaleString("fr-FR", { weekday: "long", hour: "2-digit", minute: "2-digit" }).replace(":", "h"); } catch (e) { /* ignore */ }
+  const title = rc.home ? `Dragons – ${rc.opp}` : `${rc.opp} – Dragons`;
+  const text = `🏅 *Vote MVP* · ${title} (${rc.home ? us + "-" + them : them + "-" + us})\nQui a été le meilleur ? Vote avant ${until} 👉 ${mvpLink(rc.id)}`;
+  async function copy() {
+    try { await navigator.clipboard.writeText(mvpLink(rc.id)); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch (e) { window.prompt("Copie le lien :", mvpLink(rc.id)); }
+  }
+  return (
+    <div className="mvp-share">
+      <a className="btn-primary small mvp-wa" href={"https://wa.me/?text=" + encodeURIComponent(text)} target="_blank" rel="noopener noreferrer">Partager le vote sur WhatsApp</a>
+      <button className="btn-ghost small" onClick={copy}>{copied ? "Lien copié ✓" : "Copier le lien"}</button>
+    </div>
+  );
+}
+
+/* Arrivée par le lien /?mvp=… : le vote du match en haut de l'écran */
+function MvpLinkCard({ token, sheetId, myId, onClose }) {
+  const [rc, setRc] = useState(undefined);
+  useEffect(() => {
+    let alive = true;
+    callApi({ action: "getRecaps", token }).then((d) => { if (alive) setRc((d.recaps || []).find((x) => x.id === sheetId) || null); }).catch(() => { if (alive) setRc(null); });
+    return () => { alive = false; };
+  }, [token, sheetId]);
+  if (rc === undefined) return <div className="card mvp-card"><div className="hint">Chargement du vote…</div></div>;
+  return (
+    <div className="card mvp-card">
+      <div className="mvp-link-head">
+        <div className="call-tag" style={{ background: "#E9C46A", color: "#1a1406" }}>VOTE MVP</div>
+        <button className="btn-ghost small" onClick={onClose}>Fermer</button>
+      </div>
+      {!rc ? <div className="hint" style={{ marginTop: 8 }}>Ce match n'est pas (ou plus) disponible.</div> : (
+        <>
+          <div className="call-when" style={{ margin: "8px 0 6px" }}>{rc.home ? "Dragons – " + rc.opp : rc.opp + " – Dragons"} · {recapSum(rc.us)}-{recapSum(rc.them)}</div>
+          {rc.mvp && !rc.mvp.canVote && rc.mvp.open && !rc.mvp.canPick && <div className="hint" style={{ marginBottom: 6 }}>Seuls les joueurs de ce match votent.</div>}
+          {rc.mvp && rc.mvp.myVote && rc.mvp.open && <div className="ok-msg" style={{ marginBottom: 6 }}>Tu as voté ✓ Tu peux encore changer.</div>}
+          <MvpBox rc={rc} myId={myId} token={token} onChange={(mvp) => setRc((x) => ({ ...x, mvp }))} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function MvpVoteCard({ token, myId, member, hideId }) {
   const [list, setList] = useState([]);
+  const [wins, setWins] = useState([]);
   const [done, setDone] = useState({});
   useEffect(() => {
     if (!token) return;
     let alive = true;
-    callApi({ action: "getRecaps", token }).then((d) => { if (alive) setList((d.recaps || []).filter((rc) => rc.mvp && rc.mvp.canVote && !rc.mvp.myVote)); }).catch(() => {});
+    callApi({ action: "getRecaps", token }).then((d) => {
+      if (!alive) return;
+      const all = d.recaps || [];
+      setList(all.filter((rc) => rc.mvp && rc.mvp.canVote && !rc.mvp.myVote));
+      // résultats des votes clos depuis moins de 4 jours (matchs joués ou de mon équipe)
+      const now = Date.now();
+      setWins(all.filter((rc) => rc.mvp && !rc.mvp.open && (rc.mvp.result || rc.mvp.coach) && now - rc.mvp.closesAt < 4 * 86400000 &&
+        ((rc.rows || []).some((r) => r.id === myId) || (member || {})[rc.squad])));
+    }).catch(() => {});
     return () => { alive = false; };
   }, [token]);
-  if (!list.length) return null;
+  const votes = list.filter((rc) => rc.id !== hideId);
+  if (!votes.length && !wins.length) return null;
   return (
-    <div className="card mvp-card">
-      <div className="call-tag" style={{ background: "#E9C46A", color: "#1a1406" }}>VOTE MVP</div>
-      {list.map((rc) => (
-        <div key={rc.id} style={{ marginTop: 8 }}>
-          <div className="call-when" style={{ marginBottom: 6 }}>{rc.home ? "Dragons – " + rc.opp : rc.opp + " – Dragons"} · {recapSum(rc.us)}-{recapSum(rc.them)}</div>
-          {done[rc.id] ? <div className="ok-msg">Vote enregistré ✓ Résultat à la clôture, dans Historique.</div>
-            : <MvpBox rc={rc} myId={myId} token={token} onChange={(mvp) => { setList((l) => l.map((x) => (x.id === rc.id ? { ...x, mvp } : x))); if (mvp.myVote) setDone((d) => ({ ...d, [rc.id]: true })); }} />}
+    <>
+      {wins.map((rc) => {
+        const coachMe = rc.mvp.coach && rc.mvp.coach.pid === myId;
+        const teamMe = (rc.mvp.result || []).some((x) => x.pid === myId);
+        return (
+          <div className="card mvp-card mvp-win" key={"w-" + rc.id}>
+            <div className="call-tag" style={{ background: "#E9C46A", color: "#1a1406" }}>MVP DU MATCH</div>
+            <div className="call-when" style={{ margin: "8px 0 4px" }}>{rc.home ? "Dragons – " + rc.opp : rc.opp + " – Dragons"} · {recapSum(rc.us)}-{recapSum(rc.them)}</div>
+            {rc.mvp.coach && <div className="mvp-win-line">🏆 MVP du coach : <b>{rc.mvp.coach.n}</b>{rc.mvp.coach.why ? <span className="mvp-why"> « {rc.mvp.coach.why} »</span> : null}</div>}
+            {rc.mvp.result && <div className="mvp-win-line">🏅 MVP des coéquipiers : <b>{rc.mvp.result.map((x) => x.n).join(" & ")}</b> <span className="mvp-sub">({rc.mvp.result[0].v} voix)</span></div>}
+            {(coachMe || teamMe) && <div className="mvp-bravo">🎉 Bravo, c'est toi !</div>}
+          </div>
+        );
+      })}
+      {votes.length > 0 && (
+        <div className="card mvp-card">
+          <div className="call-tag" style={{ background: "#E9C46A", color: "#1a1406" }}>VOTE MVP</div>
+          {votes.map((rc) => (
+            <div key={rc.id} style={{ marginTop: 8 }}>
+              <div className="call-when" style={{ marginBottom: 6 }}>{rc.home ? "Dragons – " + rc.opp : rc.opp + " – Dragons"} · {recapSum(rc.us)}-{recapSum(rc.them)}</div>
+              {done[rc.id] ? <div className="ok-msg">Vote enregistré ✓ Résultat à la clôture, dans Historique.</div>
+                : <MvpBox rc={rc} myId={myId} token={token} onChange={(mvp) => { setList((l) => l.map((x) => (x.id === rc.id ? { ...x, mvp } : x))); if (mvp.myVote) setDone((d) => ({ ...d, [rc.id]: true })); }} />}
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      )}
+    </>
   );
 }
 
@@ -3873,6 +3989,382 @@ function PresenceRosterView({ state, squads, squadSel, access }) {
 /* V3 · Joueurs du club : habituel / renfort, équipe par équipe        */
 /* ------------------------------------------------------------------ */
 const MEMBER_NEXT = { "": "reg", reg: "renf", renf: "" };
+/* ------------------------------------------------------------------ */
+/* Roster du week-end : Équipe 1 valide, puis 2, puis 3 (mails à chaque étape) */
+/* ------------------------------------------------------------------ */
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function wkKeyOf(d) { const day = d.getDay(); const s = new Date(d); s.setDate(d.getDate() + (day === 0 ? -1 : 6 - day)); return ymd(s); }
+function wkDate(wk, plus = 0) { const [y, m, d] = wk.split("-").map(Number); return new Date(y, m - 1, d + plus); }
+const fmtDay = (d, opt = { weekday: "short", day: "numeric", month: "short" }) => d.toLocaleDateString("fr-FR", opt);
+function wkTitle(wk) { const a = wkDate(wk), b = wkDate(wk, 1); return `${a.getDate()}${a.getMonth() === b.getMonth() ? "" : " " + fmtDay(a, { month: "short" })}-${fmtDay(b, { day: "numeric", month: "short" })}`; }
+function weekendMatchesC(state, wk) { return state.matches.filter((m) => { if (m.cancelled) return false; const d = matchDateOf(m); return d && wkKeyOf(d) === wk; }); }
+function weekendSquadsC(state, wk) { const ms = weekendMatchesC(state, wk); return (state.squads || []).filter((q) => ms.some((m) => m.squad === q.id)); }
+const canRosterC = (access, sq) => canSqC(access, sq, "compo") || canSqC(access, sq, "roster");
+/* Ma convocation : le dernier roster validé où je suis retenu, pour un week-end pas encore passé */
+function myWeekendC(state, pid) {
+  if (!pid) return null;
+  const today = ymd(new Date(Date.now() - DAY_MS));
+  const wks = Object.keys(state.rosters || {}).filter((wk) => ymd(wkDate(wk, 1)) >= today).sort();
+  for (const wk of wks) for (const [sq, e] of Object.entries(state.rosters[wk])) if (e.status === "ok" && e.picks.includes(pid) && weekendMatchesC(state, wk).some((m) => m.squad === sq)) return { wk, sq };
+  return null;
+}
+
+function WeekendCard({ state, playerId }) {
+  const mine = myWeekendC(state, playerId);
+  if (!mine) return null;
+  const q = (state.squads || []).find((x) => x.id === mine.sq) || {};
+  const ms = weekendMatchesC(state, mine.wk).filter((m) => m.squad === mine.sq).sort((a, b) => matchDateOf(a) - matchDateOf(b) || String(a.time || "").localeCompare(String(b.time || "")));
+  return (
+    <div className="card wk-card" style={{ "--sq": q.color }}>
+      <div className="call-tag" style={{ background: q.color, color: "#0b120e" }}>TON ÉQUIPE CE WEEK-END</div>
+      <div className="wk-team"><i aria-hidden="true" />{q.name} <span>· {wkTitle(mine.wk)}</span></div>
+      {ms.map((m) => (
+        <div className="wk-match" key={m.id}><b>{fmtDay(matchDateOf(m), { weekday: "long", day: "numeric" })}{m.time ? " · " + m.time : ""}</b><span>{m.location === "domicile" ? "Domicile" : "Extérieur"}{m.opponent ? " vs " + m.opponent : ""}</span></div>
+      ))}
+      <div className="hint" style={{ marginTop: 6 }}>Un empêchement ? Mets-toi « Absent » sur le match ci-dessous au plus vite.</div>
+    </div>
+  );
+}
+
+function SelectionView({ state, access, token, squadSel, initialWk, onState }) {
+  const today = ymd(new Date(Date.now() - DAY_MS));
+  const wks = useMemo(() => {
+    const set = new Set();
+    state.matches.forEach((m) => { if (m.cancelled) return; const d = matchDateOf(m); if (d) set.add(wkKeyOf(d)); });
+    return [...set].filter((wk) => ymd(wkDate(wk, 1)) >= today || wk === initialWk).sort();
+  }, [state.matches, today, initialWk]);
+  const [wk, setWk] = useState(initialWk && wks.includes(initialWk) ? initialWk : wks[0] || "");
+  const order = wk ? weekendSquadsC(state, wk) : [];
+  const readable = order.filter((q) => access && (access.owner || (access.squads[q.id] && access.squads[q.id].read)));
+  const pickDefault = () => (readable.find((q) => q.id === squadSel && canRosterC(access, q.id)) || readable.find((q) => canRosterC(access, q.id) && !(((state.rosters || {})[wk] || {})[q.id] || {}).status === "ok") || readable.find((q) => canRosterC(access, q.id)) || readable[0] || {}).id;
+  const [sq, setSq] = useState(pickDefault);
+  useEffect(() => { if (!order.some((q) => q.id === sq)) setSq(pickDefault()); }, [wk]); // eslint-disable-line
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  if (!wks.length) return <div className="card wide"><h2>Roster du week-end</h2><div className="hint">Aucun match à venir avec une date.</div></div>;
+  const rec = ((state.rosters || {})[wk]) || {};
+  const entry = rec[sq] || { status: "draft", picks: [] };
+  const q = order.find((x) => x.id === sq) || {};
+  const rank = order.findIndex((x) => x.id === sq);
+  const deadlineOf = (i) => wkDate(wk, -3 + Math.min(i, 2));
+  const waiting = order.slice(0, Math.max(rank, 0)).find((x) => !(rec[x.id] && rec[x.id].status === "ok"));
+  const can = canRosterC(access, sq);
+  const editable = can && entry.status !== "ok";
+  const lowerDone = order.slice(rank + 1).some((x) => rec[x.id] && rec[x.id].status === "ok");
+  const nameOf = (pid) => { const p = state.roster.find((r) => r.id === pid); return p ? `${p.prenom} ${p.nom}` : pid; };
+  // verrous : retenus par une autre équipe (roster validé)
+  const locks = {};
+  Object.entries(rec).forEach(([x, e]) => { if (x !== sq && e.status === "ok" && order.some((y) => y.id === x)) e.picks.forEach((pid) => { locks[pid] = x; }); });
+  const sqName = (id) => ((state.squads || []).find((x) => x.id === id) || {}).name || id;
+  const sqColor = (id) => ((state.squads || []).find((x) => x.id === id) || {}).color;
+  const ms = weekendMatchesC(state, wk).filter((m) => m.squad === sq).sort((a, b) => matchDateOf(a) - matchDateOf(b) || String(a.time || "").localeCompare(String(b.time || "")));
+  const pres = (pid) => {
+    const vals = ms.map((m) => ((state.presence || {})[pid] || {})[m.id] || "");
+    const why = ms.map((m) => ((state.presence || {})[pid] || {})[m.id + "-why"]).find(Boolean);
+    if (vals.length && vals.every((v) => v === "present")) return { k: "ok", t: "Présent" };
+    if (vals.some((v) => v === "absent")) return { k: "no", t: why === "d3" ? "Absent · joue en D3" : why === "blesse" ? "Absent · blessé" : "Absent" + (vals.every((v) => v === "absent") ? "" : " (1 match)") };
+    if (vals.some((v) => v === "reserve")) return { k: "mid", t: "Sous réserve" };
+    if (vals.some((v) => v === "present")) return { k: "mid", t: "Présent (1 match)" };
+    return { k: "", t: "Pas répondu" };
+  };
+  const pool = state.roster.filter((p) => memberOf(state, p.id, sq) || entry.picks.includes(p.id));
+  const sortP = (a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom);
+  const groups = [
+    { k: "reg", t: "Habituels", list: pool.filter((p) => memberOf(state, p.id, sq) === "reg" && !locks[p.id]).sort(sortP) },
+    { k: "renf", t: "Renforts possibles", list: pool.filter((p) => memberOf(state, p.id, sq) === "renf" && !locks[p.id]).sort(sortP) },
+    { k: "lock", t: "Déjà retenus ailleurs ce week-end", list: pool.filter((p) => locks[p.id]).sort(sortP) },
+  ];
+  // un joueur de ma sélection pris entre-temps par une équipe au-dessus (match revenu, roster rouvert…) n'est plus compté
+  const okPicks = entry.picks.filter((pid) => !locks[pid]);
+  const n = okPicks.length, target = q.target || 12;
+  async function run(action, picks) {
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      const r = await callApi({ action, token, wk, squad: sq, ...(picks ? { picks } : {}) });
+      onState(r.state);
+      if (action === "rosterValidate") {
+        const m = r.mail || {};
+        setMsg(!m.configured ? "Roster validé ✓ (envoi des mails pas activé : Administration › Mails)." : `Roster validé ✓ · mails envoyés : ${m.coaches} au staff${order[rank + 1] ? " de l'" + order[rank + 1].name : " (récap final)"}, ${m.players} convocation${m.players > 1 ? "s" : ""}${m.removed ? `, ${m.removed} changement${m.removed > 1 ? "s" : ""}` : ""}${m.failed ? ` · ${m.failed} en échec` : ""}.`);
+      }
+      return true;
+    } catch (e) { setErr(e.message); return false; } finally { setBusy(false); }
+  }
+  const toggle = (pid) => { if (!editable || busy) return; const picks = okPicks.includes(pid) ? okPicks.filter((x) => x !== pid) : [...okPicks, pid]; run("rosterSave", picks); };
+  const typeOf = (pid) => (state.squads || []).filter((x) => memberOf(state, pid, x.id)).map((x) => ({ id: x.id, c: x.color, n: x.name.replace(/[^0-9]/g, "") || x.name.slice(0, 2), renf: memberOf(state, pid, x.id) === "renf" }));
+  return (
+    <div className="sel-view">
+      <div className="card wide">
+        <h2>Roster du week-end</h2>
+        <div className="hint" style={{ marginBottom: 10 }}>L'Équipe 1 valide son roster en premier (avant le mercredi soir), puis l'Équipe 2, puis l'Équipe 3. À chaque validation, le staff de l'équipe suivante et les joueurs retenus reçoivent un mail. Un joueur retenu ne peut plus être pris par une autre équipe ce week-end.</div>
+        <div className="wk-pick" role="tablist" aria-label="Week-end">
+          {wks.slice(0, 8).map((w) => <button key={w} role="tab" aria-selected={w === wk} className={"sq-tab" + (w === wk ? " on" : "")} onClick={() => { setWk(w); setMsg(""); setErr(""); setConfirm(false); }}>{wkTitle(w)}</button>)}
+        </div>
+        <div className="casc">
+          {order.map((x, i) => {
+            const e = rec[x.id];
+            const okd = e && e.status === "ok";
+            const wait = order.slice(0, i).find((y) => !(rec[y.id] && rec[y.id].status === "ok"));
+            const late = !okd && ymd(new Date()) > ymd(deadlineOf(i));
+            return (
+              <React.Fragment key={x.id}>
+                {i > 0 && <span className="casc-arrow" aria-hidden="true">→</span>}
+                <button className={"casc-step" + (okd ? " ok" : wait ? " wait" : late ? " late" : " turn") + (x.id === sq ? " sel" : "")} style={{ "--sq": x.color }} onClick={() => { setSq(x.id); setConfirm(false); setMsg(""); setErr(""); }} disabled={!readable.some((y) => y.id === x.id)}>
+                  <span className="casc-name"><i aria-hidden="true" />{x.name}</span>
+                  <span className="casc-st">{okd ? `✓ Validé · ${e.picks.length} joueurs` : wait ? `En attente de l'${wait.name}` : late ? `En retard · limite ${fmtDay(deadlineOf(i), { weekday: "short", day: "numeric" })}` : `À valider avant ${fmtDay(deadlineOf(i), { weekday: "long", day: "numeric" })} soir`}</span>
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+
+      {sq && (
+        <div className="card wide sel-team" style={{ "--sq": q.color }}>
+          <div className="sel-head">
+            <h2 style={{ margin: 0 }}><span className="sel-dot" aria-hidden="true" />{q.name}</h2>
+            <div className="sel-matches">{ms.map((m) => <span key={m.id}>{fmtDay(matchDateOf(m), { weekday: "short", day: "numeric" })}{m.time ? " " + m.time : ""} · {m.location === "domicile" ? "dom." : "ext."}{m.opponent ? " vs " + m.opponent : ""}</span>)}</div>
+          </div>
+          {!can && <div className="ro-banner">Lecture seule{entry.status !== "ok" ? " · roster en préparation" : ""}</div>}
+          {entry.status === "ok" ? (
+            <>
+              <div className="sel-done">✓ Roster validé{entry.by ? ` par @${entry.by}` : ""}{entry.at ? ` · ${new Date(entry.at).toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""} · {n} joueur{n > 1 ? "s" : ""}</div>
+              <div className="sel-chips">{entry.picks.map(nameOf).sort().map((x) => <span key={x}>{x}</span>)}</div>
+              {can && (!lowerDone || access.owner) && <button className="btn-ghost small" style={{ marginTop: 10 }} disabled={busy} onClick={() => run("rosterReopen")}>Rouvrir pour modifier</button>}
+              {can && lowerDone && !access.owner && <div className="hint" style={{ marginTop: 8 }}>L'équipe suivante a déjà validé : seul le propriétaire peut rouvrir.</div>}
+            </>
+          ) : !can ? (
+            <div className="hint">{waiting ? `En attente du roster de l'${waiting.name}.` : "Le staff de cette équipe prépare son roster."}</div>
+          ) : (
+            <>
+              <div className="sel-count">
+                <div className="sel-n"><b className={n >= target ? "ok" : n >= 9 ? "mid" : "low"}>{n}</b> sélectionné{n > 1 ? "s" : ""} <span>· objectif {target} · minimum 9 pour jouer</span></div>
+                <div className="sel-bar"><i style={{ width: Math.min(100, (n / target) * 100) + "%" }} /></div>
+              </div>
+              {waiting && <div className="sel-wait">⏳ En attente du roster de l'{waiting.name} : tu peux préparer ta sélection, elle se met à jour quand l'{waiting.name} valide.</div>}
+              {groups.map((g) => g.list.length > 0 && (
+                <div key={g.k} className="sel-group">
+                  <div className="side-label" style={{ margin: "12px 0 6px" }}>{g.t} ({g.list.length})</div>
+                  {g.list.map((p) => {
+                    const on = okPicks.includes(p.id);
+                    const pr = pres(p.id);
+                    const lk = locks[p.id];
+                    return (
+                      <button key={p.id} className={"sel-row" + (on ? " on" : "") + (lk ? " locked" : "")} disabled={!!lk || busy} onClick={() => toggle(p.id)} aria-pressed={on}>
+                        <span className="sel-check" aria-hidden="true">{on ? "✓" : ""}</span>
+                        <span className="sel-who"><b>{p.prenom} {p.nom}</b>{p.numero ? <span className="recap-num"> #{p.numero}</span> : null}
+                          <span className="sel-type">{typeOf(p.id).map((t) => <i key={t.id} style={{ "--sq": t.c }} className={t.renf ? "renf" : ""} title={sqName(t.id) + (t.renf ? " (renfort)" : "")}>{t.n}</i>)}</span>
+                        </span>
+                        <span className={"sel-pres " + (lk ? "" : pr.k)}>{lk ? <span style={{ color: sqColor(lk) }}>Retenu en {sqName(lk)}</span> : pr.t}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+              {pool.length === 0 && <div className="hint">Aucun joueur dans cette équipe : coche-les dans l'écran Joueurs.</div>}
+              <div className="sel-actions">
+                {!confirm ? (
+                  <button className="btn-primary" disabled={busy || !n || !!waiting} onClick={() => setConfirm(true)}>{waiting ? `Valider (après l'${waiting.name})` : `Valider le roster (${n})`}</button>
+                ) : (
+                  <div className="sel-confirm">
+                    <b>Valider le roster de l'{q.name} avec {n} joueur{n > 1 ? "s" : ""} ?</b>
+                    {n < 9 && <div className="error" style={{ margin: "6px 0" }}>Attention : moins de 9 joueurs.</div>}
+                    <div className="hint" style={{ margin: "4px 0 8px" }}>{order[rank + 1] ? `Le staff de l'${order[rank + 1].name} recevra un mail pour faire son roster` : "Le propriétaire recevra le récap de tout le week-end"}, et les joueurs retenus leur convocation.</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button className="btn-primary small" disabled={busy} onClick={async () => { if (await run("rosterValidate", okPicks)) setConfirm(false); }}>{busy ? "Envoi…" : "Oui, valider et envoyer"}</button>
+                      <button className="btn-ghost small" onClick={() => setConfirm(false)}>Annuler</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          {msg && <div className="ok-msg" style={{ marginTop: 10 }}>{msg}</div>}
+          {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Import du calendrier depuis Excel / CSV                              */
+/* ------------------------------------------------------------------ */
+function CalendarImport({ state, access, token, squadSel, onState }) {
+  const squads = (state.squads || []).filter((q) => canSqC(access, q.id, "manage"));
+  const [open, setOpen] = useState(false);
+  const [file, setFile] = useState(null);
+  const [raw, setRaw] = useState(null);
+  const [defSq, setDefSq] = useState(squads.some((q) => q.id === squadSel) ? squadSel : (squads[0] || {}).id);
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const defYear = parseInt(state.currentSeason, 10) || new Date().getFullYear();
+  const analyse = (data, sq) => {
+    const r = analyseCalendar(data, { squads, defaultSquad: sq, defaultYear: defYear });
+    if (r.error) { setErr(r.error); setRows(null); return; }
+    setErr(""); setRows({ list: r.rows.map((x) => ({ ...x, keep: !x.skip && !x.error })), hasSquad: r.columns.squad != null, header: r.header });
+  };
+  async function onFile(f) {
+    if (!f) return;
+    setFile(f); setMsg(""); setErr(""); setRows(null);
+    try { const data = await readCalendarFile(f); setRaw(data); analyse(data, defSq); }
+    catch (e) { setErr(e.message || "Fichier illisible."); }
+  }
+  // un match déjà dans le calendrier (même équipe, même date, même adversaire) sera mis à jour, pas dupliqué
+  const exists = (r) => state.matches.some((m) => { if (m.squad !== r.squad || m.cancelled) return false; const d = matchDateOf(m); return d && ymd(d) === r.date && calNorm(m.opponent) === calNorm(r.opponent); });
+  const list = rows ? rows.list : [];
+  const toImport = list.filter((r) => r.keep && !r.error && r.squad);
+  const nNew = toImport.filter((r) => !exists(r)).length;
+  const sqName = (id) => (squads.find((q) => q.id === id) || {}).name || "?";
+  const sqColor = (id) => (squads.find((q) => q.id === id) || {}).color;
+  const fmt = (isoD) => { const [y, m, d] = isoD.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short", year: "numeric" }); };
+  function setRow(i, patch) { setRows((x) => ({ ...x, list: x.list.map((r, j) => (j === i ? { ...r, ...patch } : r)) })); }
+  async function doImport() {
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      const r = await callApi({ action: "importMatches", token, rows: toImport.map(({ squad, date, time, opponent, location }) => ({ squad, date, time, opponent, location })) });
+      onState(r.state);
+      const rep = r.importReport || {};
+      setMsg(`Calendrier importé ✓ ${rep.added || 0} match${rep.added > 1 ? "s" : ""} ajouté${rep.added > 1 ? "s" : ""}${rep.updated ? `, ${rep.updated} mis à jour` : ""}.`);
+      setRows(null); setFile(null); setRaw(null); setOpen(false);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  function downloadTemplate() { const a = document.createElement("a"); a.href = "/modeles/modele-calendrier-dragons.xlsx"; a.download = "modele-calendrier-dragons.xlsx"; a.click(); }
+  if (!open) return (
+    <div className="card wide cal-card">
+      <div className="cal-closed">
+        <div><h2 style={{ margin: 0 }}>Importer un calendrier</h2><div className="hint" style={{ margin: "4px 0 0" }}>Un fichier Excel ou CSV avec les dates : tous les matchs de la saison créés d'un coup.</div></div>
+        <button className="btn-primary small" onClick={() => setOpen(true)}>Importer un fichier</button>
+      </div>
+      {msg && <div className="ok-msg" style={{ marginTop: 10 }}>{msg}</div>}
+    </div>
+  );
+  return (
+    <div className="card wide cal-card">
+      <div className="cal-closed"><h2 style={{ margin: 0 }}>Importer un calendrier</h2><button className="btn-ghost small" onClick={() => { setOpen(false); setRows(null); setFile(null); setErr(""); }}>Fermer</button></div>
+      <div className="hint" style={{ margin: "8px 0 10px" }}>
+        Excel (.xlsx) ou CSV. Colonnes reconnues : <b>Date</b>, <b>Heure</b>, <b>Équipe</b> (1, 2, 3…), <b>Adversaire</b>, <b>Lieu</b> (Domicile / Extérieur) — ou le format de la fédé avec <b>Recevant</b> et <b>Visiteur</b>. L'ordre et les lignes de titre au-dessus n'ont pas d'importance. Réimporter un fichier corrigé met à jour les matchs au lieu de les doubler.
+      </div>
+      <label className={"cal-drop" + (drag ? " on" : "")} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); onFile(e.dataTransfer.files[0]); }}>
+        <input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { onFile(e.target.files[0]); e.target.value = ""; }} />
+        <b>{file ? file.name : "Choisir le fichier"}</b><span>{file ? "cliquer pour en choisir un autre" : "ou le glisser ici"}</span>
+      </label>
+      <button className="btn-link" onClick={downloadTemplate}>Télécharger un modèle à remplir</button>
+      {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+      {rows && (
+        <>
+          {!rows.hasSquad && (
+            <div className="cal-sq">Pas de colonne « Équipe » : ces matchs sont pour
+              <select value={defSq} onChange={(e) => { setDefSq(e.target.value); analyse(raw, e.target.value); }}>{squads.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}</select>
+            </div>
+          )}
+          <div className="cal-sum"><b>{toImport.length}</b> match{toImport.length > 1 ? "s" : ""} à importer · {nNew} nouveau{nNew > 1 ? "x" : ""}{toImport.length - nNew ? ` · ${toImport.length - nNew} déjà dans le calendrier (mis à jour)` : ""}{list.filter((r) => r.error).length ? ` · ${list.filter((r) => r.error).length} ligne(s) à corriger` : ""}</div>
+          <div className="cal-table">
+            {list.map((r, i) => (
+              <div key={i} className={"cal-row" + (r.error ? " bad" : !r.keep ? " off" : "")}>
+                <input type="checkbox" checked={r.keep && !r.error} disabled={!!r.error} onChange={(e) => setRow(i, { keep: e.target.checked })} aria-label={"Importer la ligne " + r.line} />
+                <span className="cal-date">{r.date ? fmt(r.date) : "—"}{r.time ? <em> · {r.time}</em> : null}</span>
+                <span className="cal-sqc" style={{ "--sq": sqColor(r.squad) }}>{r.squad ? sqName(r.squad) : "?"}</span>
+                <span className="cal-opp">{r.location === "domicile" ? "Dom." : "Ext."} {r.opponent ? "vs " + r.opponent : <i>adversaire ?</i>}</span>
+                <span className="cal-note">{r.error ? `Ligne ${r.line} : ${r.error}` : r.warn ? r.warn : r.squad && r.date && exists(r) ? "déjà là · mis à jour" : "nouveau"}</span>
+              </div>
+            ))}
+          </div>
+          <button className="btn-primary" style={{ marginTop: 12 }} disabled={busy || !toImport.length} onClick={doImport}>{busy ? "Import…" : `Importer ${toImport.length} match${toImport.length > 1 ? "s" : ""}`}</button>
+        </>
+      )}
+      {msg && <div className="ok-msg" style={{ marginTop: 10 }}>{msg}</div>}
+    </div>
+  );
+}
+
+/* Import de l'effectif (propriétaire) : joueurs, numéros, postes, équipes, adresses */
+function PlayersImport({ state, token, onState }) {
+  const [open, setOpen] = useState(false);
+  const [file, setFile] = useState(null);
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  async function onFile(f) {
+    if (!f) return;
+    setFile(f); setErr(""); setMsg(""); setRes(null);
+    try {
+      const r = analysePlayers(await readCalendarFile(f), { squads: state.squads || [], roster: state.roster });
+      if (r.error) setErr(r.error); else setRes({ ...r, rows: r.rows.map((x) => ({ ...x, keep: !x.error })) });
+    } catch (e) { setErr(e.message || "Fichier illisible."); }
+  }
+  const rows = res ? res.rows : [];
+  const ok = rows.filter((r) => r.keep && !r.error);
+  const nNew = ok.filter((r) => !r.exists).length;
+  const newTeams = [...new Set(ok.flatMap((r) => r.newTeams || []))];
+  const sqColor = (name) => ((state.squads || []).find((q) => calNorm(q.name) === calNorm(name)) || {}).color || "#9aa";
+  async function doImport() {
+    setBusy(true); setErr("");
+    try {
+      const r = await callApi({ action: "importPlayers", token, rows: ok.map(({ line, nom, prenom, numero, positions, teams, email }) => ({ line, nom, prenom, numero, positions, teams, email })) });
+      onState(r.state);
+      const rep = r.importReport || {};
+      setMsg(`Effectif importé ✓ ${rep.added || 0} joueur${rep.added > 1 ? "s" : ""} ajouté${rep.added > 1 ? "s" : ""}, ${rep.updated || 0} mis à jour${rep.squads && rep.squads.length ? ` · équipe${rep.squads.length > 1 ? "s" : ""} créée${rep.squads.length > 1 ? "s" : ""} : ${rep.squads.join(", ")}` : ""}.`);
+      setRes(null); setFile(null); setOpen(false);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  function downloadTemplate() { const a = document.createElement("a"); a.href = "/modeles/modele-effectif-dragons.xlsx"; a.download = "modele-effectif-dragons.xlsx"; a.click(); }
+  const short = { "Lanceur": "P", "Catcher": "C", "Première base": "1B", "Deuxième base": "2B", "Troisième base": "3B", "Arrêt-court": "SS", "Champ gauche": "LF", "Champ centre": "CF", "Champ droit": "RF", "Champ extérieur": "OF", "Utility": "UT", "Manager": "Mgr" };
+  if (!open) return (
+    <div className="card wide cal-card">
+      <div className="cal-closed">
+        <div><h2 style={{ margin: 0 }}>Importer l'effectif</h2><div className="hint" style={{ margin: "4px 0 0" }}>Un fichier Excel ou CSV avec les joueurs, leurs numéros, postes et équipes : tout le monde en place avant la création des comptes.</div></div>
+        <button className="btn-primary small" onClick={() => setOpen(true)}>Importer un fichier</button>
+      </div>
+      {msg && <div className="ok-msg" style={{ marginTop: 10 }}>{msg}</div>}
+    </div>
+  );
+  return (
+    <div className="card wide cal-card pl-import">
+      <div className="cal-closed"><h2 style={{ margin: 0 }}>Importer l'effectif</h2><button className="btn-ghost small" onClick={() => { setOpen(false); setRes(null); setFile(null); setErr(""); }}>Fermer</button></div>
+      <div className="hint" style={{ margin: "8px 0 10px" }}>
+        Colonnes reconnues : <b>Nom</b>, <b>Prénom</b> (ou une colonne <b>Joueur</b>), <b>Numéro</b>, <b>Poste 1/2/3</b> ou <b>Postes</b> (P, C, 1B, SS, OF… ou en toutes lettres), une colonne par équipe (<b>H</b> = habituel, <b>R</b> = renfort) ou une colonne <b>Équipes</b> (« 1/2 », « 1H 2R »), et <b>Email</b>. Un joueur déjà dans l'appli (même nom et prénom) est mis à jour, pas doublé ; une équipe qui n'existe pas encore est créée. Une adresse déjà choisie par un joueur n'est jamais remplacée.
+      </div>
+      <label className={"cal-drop" + (drag ? " on" : "")} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); onFile(e.dataTransfer.files[0]); }}>
+        <input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { onFile(e.target.files[0]); e.target.value = ""; }} />
+        <b>{file ? file.name : "Choisir le fichier"}</b><span>{file ? "cliquer pour en choisir un autre" : "ou le glisser ici"}</span>
+      </label>
+      <button className="btn-link" onClick={downloadTemplate}>Télécharger un modèle à remplir</button>
+      {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+      {res && (
+        <>
+          <div className="cal-sum"><b>{ok.length}</b> joueur{ok.length > 1 ? "s" : ""} · {nNew} nouveau{nNew > 1 ? "x" : ""} · {ok.length - nNew} déjà dans l'appli (mis à jour){rows.filter((r) => r.error).length ? ` · ${rows.filter((r) => r.error).length} ligne(s) à corriger` : ""}</div>
+          {newTeams.length > 0 && <div className="sel-wait" style={{ marginBottom: 8 }}>Équipe{newTeams.length > 1 ? "s" : ""} qui ser{newTeams.length > 1 ? "ont" : "a"} créée{newTeams.length > 1 ? "s" : ""} : <b>{newTeams.join(", ")}</b></div>}
+          {!res.hasTeams && <div className="hint" style={{ marginBottom: 8 }}>Pas de colonne d'équipe : les équipes des joueurs ne changent pas (à régler ensuite dans le tableau ci-dessous).</div>}
+          <div className="cal-table">
+            {rows.map((r, i) => (
+              <div key={i} className={"cal-row pl-row" + (r.error ? " bad" : !r.keep ? " off" : "")}>
+                <input type="checkbox" checked={r.keep && !r.error} disabled={!!r.error} onChange={(e) => setRes((x) => ({ ...x, rows: x.rows.map((y, j) => (j === i ? { ...y, keep: e.target.checked } : y)) }))} aria-label={"Importer " + r.prenom + " " + r.nom} />
+                <span className="cal-date"><b>{r.prenom} {r.nom}</b>{r.numero ? <em> #{r.numero}</em> : null}</span>
+                <span className="pl-teams">{Object.entries(r.teams).map(([t, v]) => <i key={t} style={{ "--sq": sqColor(t) }} className={v === "renf" ? "renf" : ""} title={t + (v === "renf" ? " (renfort)" : " (habituel)")}>{t.replace(/[^0-9]/g, "") || t.slice(0, 3)}{v === "renf" ? "R" : ""}</i>)}</span>
+                <span className="cal-opp">{r.positions.map((p) => short[p] || p).join(" · ")}{(() => {
+                  const cur = r.exists ? state.roster.find((p) => calNorm(p.nom + " " + p.prenom) === calNorm(r.nom + " " + r.prenom)) : null;
+                  const keep = cur && cur.mail && cur.mail.email;
+                  return keep && r.email && keep !== r.email ? <span className="pl-mail"> · garde son adresse ({keep})</span> : r.email ? <span className="pl-mail"> · {r.email}</span> : null;
+                })()}</span>
+                <span className="cal-note">{r.error ? `Ligne ${r.line} : ${r.error}` : r.warn ? r.warn : r.exists ? "déjà là · mis à jour" : "nouveau"}</span>
+              </div>
+            ))}
+          </div>
+          <button className="btn-primary" style={{ marginTop: 12 }} disabled={busy || !ok.length} onClick={doImport}>{busy ? "Import…" : `Importer ${ok.length} joueur${ok.length > 1 ? "s" : ""}`}</button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function MembersView({ state, squads, squadSel, access, onSetMember, busy }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -4579,7 +5071,11 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0e1511; }
 .me-label { font-size: 12px; color: var(--muted); }
 .me-value { font-family: 'Roboto Mono', monospace; font-size: 16px; color: var(--cream); }
 
-.pos-editor { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.pos-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.pos-editor .field, .pos-editor select { min-width: 0; width: 100%; }
+/* Garde-fou : un champ ne dépasse jamais de sa carte, quelle que soit la largeur */
+.card select, .card input, .card textarea { max-width: 100%; box-sizing: border-box; }
+.card label, .card .field { min-width: 0; }
 @media (max-width: 600px) { .pos-editor { grid-template-columns: 1fr; } .row-2 { grid-template-columns: 1fr; } }
 
 .match-list { display: flex; flex-direction: column; gap: 10px; }
@@ -5200,6 +5696,84 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0e1511; }
 .recap-res { display: flex; gap: 3px; flex-wrap: nowrap; }
 .recap-tag { font-size: 11px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.07); color: var(--muted); }
 .recap-tag.hit { background: rgba(63,174,116,0.25); color: #8FE0B5; font-weight: 700; }
+
+/* Roster du week-end */
+.wk-pick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.casc { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
+.casc-arrow { align-self: center; color: var(--muted); font-size: 18px; }
+.casc-step { flex: 1 1 150px; min-width: 0; text-align: left; border: 1px solid var(--line); border-left: 4px solid var(--sq); border-radius: 12px; padding: 10px 12px; background: transparent; color: var(--cream); font: inherit; cursor: pointer; display: grid; gap: 3px; }
+.casc-step.sel { box-shadow: 0 0 0 2px var(--sq); }
+.casc-step:disabled { cursor: default; opacity: .75; }
+.casc-name { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.casc-name i { width: 8px; height: 8px; border-radius: 50%; background: var(--sq); }
+.casc-st { font-size: 12.5px; color: var(--muted); }
+.casc-step.ok .casc-st { color: #3FAE74; font-weight: 700; }
+.casc-step.turn .casc-st { color: #E9C46A; font-weight: 700; }
+.casc-step.late .casc-st { color: #F2665A; font-weight: 700; }
+.sel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.sel-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--sq); margin-right: 8px; vertical-align: middle; }
+.sel-matches { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); text-align: right; }
+.sel-count { margin-bottom: 4px; }
+.sel-n { font-size: 15px; }
+.sel-n span { color: var(--muted); font-size: 13px; }
+.sel-n b.ok { color: #3FAE74; } .sel-n b.mid { color: #E9C46A; } .sel-n b.low { color: #F2665A; }
+.sel-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 6px; }
+.sel-bar i { display: block; height: 100%; background: var(--sq); transition: width .2s; }
+.sel-wait { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: rgba(233,196,106,.1); border: 1px solid rgba(233,196,106,.35); font-size: 13.5px; }
+.sel-row { width: 100%; display: grid; grid-template-columns: 28px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 9px 10px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--cream); font: inherit; text-align: left; cursor: pointer; }
+.sel-row.on { border-color: var(--sq); background: color-mix(in srgb, var(--sq) 14%, transparent); }
+.sel-row.locked { opacity: .55; cursor: not-allowed; }
+.sel-check { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 800; font-size: 14px; color: #0b120e; }
+.sel-row.on .sel-check { background: var(--sq); border-color: var(--sq); }
+.sel-who { min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.sel-type { display: inline-flex; gap: 3px; }
+.sel-type i { font-style: normal; font-size: 10.5px; font-weight: 800; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; display: inline-grid; place-items: center; background: var(--sq); color: #0b120e; }
+.sel-type i.renf { background: transparent; color: var(--sq); box-shadow: inset 0 0 0 1.5px var(--sq); }
+.sel-pres { font-size: 12.5px; color: var(--muted); text-align: right; white-space: nowrap; }
+.sel-pres.ok { color: #3FAE74; } .sel-pres.no { color: #F2665A; } .sel-pres.mid { color: #E9C46A; }
+.sel-actions { margin-top: 14px; }
+.sel-confirm { padding: 12px; border-radius: 12px; border: 1px solid var(--sq); }
+.sel-done { color: #3FAE74; font-weight: 700; margin-bottom: 8px; }
+.sel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sel-chips span { padding: 5px 10px; border-radius: 14px; background: rgba(255,255,255,.06); font-size: 13.5px; }
+.wk-card { border-left: 4px solid var(--sq); }
+.wk-team { font-size: 20px; font-weight: 800; margin: 8px 0 6px; display: flex; align-items: center; gap: 8px; }
+.wk-team i { width: 10px; height: 10px; border-radius: 50%; background: var(--sq); }
+.wk-team span { font-size: 14px; font-weight: 400; color: var(--muted); }
+.wk-match { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.06); font-size: 14px; flex-wrap: wrap; }
+.wk-match span { color: var(--muted); }
+
+@media (max-width: 700px) { .casc { flex-direction: column; } .casc-arrow { display: none; } .casc-step { flex-basis: auto; } }
+.lay-phone .casc { flex-direction: column; } .lay-phone .casc-arrow { display: none; }
+@media (max-width: 420px) { .sel-row { grid-template-columns: 26px minmax(0,1fr); } .sel-pres { grid-column: 2; text-align: left; } }
+.cal-closed { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cal-drop { display: grid; place-items: center; gap: 4px; padding: 22px 12px; border: 2px dashed var(--line); border-radius: 14px; cursor: pointer; text-align: center; }
+.cal-drop.on, .cal-drop:hover { border-color: #3FAE74; background: rgba(63,174,116,.06); }
+.cal-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.cal-drop span { font-size: 13px; color: var(--muted); }
+.cal-sq { margin: 12px 0 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+.cal-sq select { width: auto; }
+.cal-sum { margin: 12px 0 8px; font-size: 14px; }
+.cal-table { display: grid; gap: 4px; max-height: 420px; overflow-y: auto; }
+.cal-row { display: grid; grid-template-columns: 22px minmax(0, 1.3fr) auto minmax(0, 1.6fr) minmax(0, 1.2fr); gap: 10px; align-items: center; padding: 7px 10px; border-radius: 9px; background: rgba(255,255,255,.03); font-size: 13.5px; }
+.cal-row.bad { background: rgba(242,102,90,.1); }
+.cal-row.off { opacity: .45; }
+.cal-date em { font-style: normal; color: var(--muted); }
+.cal-sqc { font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 10px; color: #0b120e; background: var(--sq, #888); white-space: nowrap; }
+.cal-opp, .cal-note, .cal-date { min-width: 0; overflow-wrap: anywhere; }
+.cal-note { font-size: 12px; color: var(--muted); }
+.cal-row.bad .cal-note { color: #F2665A; }
+@media (max-width: 640px) { .cal-row { grid-template-columns: 22px minmax(0,1fr) auto; } .cal-opp, .cal-note { grid-column: 2 / 4; } }
+.pl-teams { display: inline-flex; gap: 3px; }
+.pl-teams i { font-style: normal; font-size: 10.5px; font-weight: 800; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; display: inline-grid; place-items: center; background: var(--sq); color: #0b120e; }
+.pl-teams i.renf { background: transparent; color: var(--sq); box-shadow: inset 0 0 0 1.5px var(--sq); }
+.pl-mail { color: var(--muted); }
+.mvp-share { display: flex; gap: 8px; flex-wrap: wrap; }
+.mvp-wa { text-decoration: none; display: inline-flex; align-items: center; background: #25D366 !important; color: #06130C !important; border-color: transparent !important; }
+.mvp-link-head { display: flex; justify-content: space-between; align-items: center; }
+.mvp-login-hint { background: rgba(233,196,106,.14); border: 1px solid rgba(233,196,106,.5); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 14px; }
+.mvp-win-line { font-size: 14px; margin-top: 4px; }
+.mvp-bravo { margin-top: 8px; font-weight: 700; color: #E9C46A; }
 .mvp-box { border: 1px solid rgba(240,200,90,.35); background: rgba(240,200,90,.07); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 10px; }
 .mvp-line { display: flex; align-items: center; gap: 10px; }
 .mvp-ico { font-size: 22px; line-height: 1; }

@@ -88,7 +88,7 @@ function playerFocus(rc, r) {
 </td></tr>`;
 }
 
-export function renderRecapMail(rc, { player = null, site = "", sprayImg = "", mvp = null } = {}) {
+export function renderRecapMail(rc, { player = null, site = "", sprayImg = "", mvp = null, voteLink = "" } = {}) {
   const us = sum(rc.us), them = sum(rc.them);
   const res = us > them ? "Victoire" : us < them ? "Défaite" : "Match nul";
   const resColor = us > them ? GREEN : us < them ? "#C0392B" : "#B7791F";
@@ -126,9 +126,13 @@ ${hl.length ? `<tr><td style="padding:22px 24px 0">
   <div style="font:700 12px Arial,sans-serif;letter-spacing:1px;text-transform:uppercase;color:${MUTED};margin-bottom:6px">L’équipe à la batte</div>
   ${teamTable(rc, player)}
 </td></tr>
+${voteLink ? `<tr><td align="center" style="padding:26px 24px 0">
+  <a href="${esc(voteLink)}" style="display:inline-block;background:#E9C46A;color:#1a1406;text-decoration:none;font:700 16px Arial,sans-serif;padding:15px 28px;border-radius:10px">🏅 Voter pour le MVP du match</a>
+  <div style="font:12px Arial,sans-serif;color:${MUTED};margin-top:8px">Qui a été le meilleur ? Vote ouvert 3 jours (pas pour toi 😉)</div>
+</td></tr>` : ""}
 <tr><td align="center" style="padding:26px 24px 8px">
   <a href="${esc(appUrl)}" style="display:inline-block;background:${GREEN};color:#fff;text-decoration:none;font:700 15px Arial,sans-serif;padding:14px 26px;border-radius:10px">Voir le récap complet dans l’appli</a>
-  <div style="font:12px Arial,sans-serif;color:${MUTED};margin-top:8px">Déroulé manche par manche, lanceurs et stats détaillées · Historique${me ? "<br>🏅 Et vote pour le MVP du match parmi tes coéquipiers (3 jours)" : ""}</div>
+  <div style="font:12px Arial,sans-serif;color:${MUTED};margin-top:8px">Déroulé manche par manche, lanceurs et stats détaillées · Historique</div>
 </td></tr>
 <tr><td style="padding:18px 24px 22px;font:12px Arial,sans-serif;color:${MUTED};border-top:1px solid ${LINE}">
   Tu reçois ce mail parce que tu es inscrit dans l’appli des Dragons. Pour ne plus recevoir les récaps : Mon compte › Mails.
@@ -141,6 +145,7 @@ ${hl.length ? `<tr><td style="padding:22px 24px 0">
     mvp && mvp.n ? `MVP du coach : ${mvp.n}${mvp.why ? " (" + mvp.why + ")" : ""}` : "",
     me ? `Ton match : ${me.h} sur ${me.ab}` : "",
     ...hl.map(([k, v]) => `${k} : ${v}`),
+    voteLink ? `Vote pour le MVP du match : ${voteLink}` : "",
     `Récap complet : ${appUrl}`,
   ].filter(Boolean).join("\n");
 

@@ -2,7 +2,7 @@ import { getStore } from "@netlify/blobs";
 import { loadTeams, TEAMS_KEY, TEAM_LOGO_PREFIX, TEAMS_DELETED_KEY, DEFAULT_TEAMS } from "../lib/teams-data.js";
 import crypto from "node:crypto";
 import { renderRecapMail } from "../lib/recap-mail.js";
-import { mailConfig, maskEmail, makeTransport, sendMail, renderResetMail, renderTestMail } from "../lib/mailer.js";
+import { mailConfig, maskEmail, makeTransport, sendMail, renderResetMail, renderTestMail, renderRosterCoachMail, renderRosterDoneMail, renderConvocationMail, renderRosterRemovedMail } from "../lib/mailer.js";
 
 /* ------------------------------------------------------------------ */
 /* Secrets — read from environment variables, NEVER sent to the client */
@@ -266,6 +266,7 @@ function normalizeState(s, blank) {
     squads,
     members: cleanMembers,
     callups: s.callups && typeof s.callups === "object" ? s.callups : {},
+    rosters: pauseRosters(cleanRosters(s.rosters, sqIds, roster), { matches, squads }),
     ...seasonsOf(s, matches),
   };
 }
@@ -568,7 +569,7 @@ function sanitize(state, session) {
       claimedPlayerIds,
       matches: [], standings: [], presence: {}, positions: {}, lineups: {}, auditLog: [],
       seasons: state.seasons, currentSeason: state.currentSeason,
-      squads: state.squads, members: {}, callups: {},
+      squads: state.squads, members: {}, callups: {}, rosters: {},
     };
   }
   const access = accessOf(state, session);
@@ -613,7 +614,18 @@ function sanitize(state, session) {
     const { mail, ...q } = p; // adresse mail : visible seulement par le joueur lui-même et le staff
     return q.live ? { ...q, live: { ok: !!q.live.ok } } : q; // pas de mention majeur / mineur pour les autres joueurs
   });
-  const base = { ...state, roster, lineups, presence, callups, claimedPlayerIds, access };
+  state = { ...state, rosters: pauseRosters(state.rosters || {}, state) };
+  // Rosters du week-end : en entier pour les équipes lisibles ; pour les autres, seulement les rosters validés
+  const rosters = {};
+  Object.entries(state.rosters || {}).forEach(([wk, rec]) => {
+    const r = {};
+    Object.entries(rec).forEach(([sq, e]) => {
+      if (readSq.has(sq)) r[sq] = { status: e.status, picks: e.picks, by: e.by, at: e.at, notified: Object.keys(e.notified || {}) };
+      else r[sq] = e.status === "ok" ? { status: "ok", picks: e.picks, at: e.at } : { status: "draft", picks: [] };
+    });
+    rosters[wk] = r;
+  });
+  const base = { ...state, roster, lineups, presence, callups, rosters, claimedPlayerIds, access };
   if (isStaff) {
     const accounts = {};
     Object.entries(state.accounts).forEach(([uname, acc]) => {
@@ -984,6 +996,204 @@ async function handleMail(store, state, session, action, body, event) {
   return fail(400, "Action inconnue.");
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Roster du week-end : validation en cascade Équipe 1 → 2 → 3         */
+/* ------------------------------------------------------------------ */
+/* state.rosters[wk][sq] = { status: "draft" | "ok", picks: [pid], by, at, notified: { pid: date } }
+   wk = date ISO du samedi du week-end. L'ordre des équipes (Administration) fait la hiérarchie. */
+const WK_RE = /^\d{4}-\d{2}-\d{2}$/;
+function cleanRosters(raw, sqIds, roster) {
+  const out = {};
+  const ids = new Set((roster || []).map((p) => p.id));
+  Object.entries(raw && typeof raw === "object" ? raw : {}).forEach(([wk, rec]) => {
+    if (!WK_RE.test(wk) || !rec || typeof rec !== "object") return;
+    const r = {};
+    Object.entries(rec).forEach(([sq, e]) => {
+      if (!sqIds.includes(sq) || !e || typeof e !== "object") return;
+      r[sq] = {
+        status: e.status === "ok" ? "ok" : "draft",
+        picks: [...new Set((Array.isArray(e.picks) ? e.picks : []).filter((pid) => ids.has(pid)))],
+        by: String(e.by || "").slice(0, 60),
+        at: String(e.at || "").slice(0, 30),
+        notified: e.notified && typeof e.notified === "object" ? e.notified : {},
+      };
+    });
+    if (Object.keys(r).length) out[wk] = r;
+  });
+  return out;
+}
+/* Une équipe dont les matchs ont quitté le week-end (annulés, déplacés) : son roster validé repasse en brouillon
+   (sélection gardée). Si le match revient, elle revalide à son tour : jamais un joueur dans deux rosters validés. */
+function pauseRosters(rosters, st) {
+  const out = {};
+  Object.entries(rosters).forEach(([wk, rec]) => {
+    const playing = weekendSquads(st, wk);
+    out[wk] = {};
+    Object.entries(rec).forEach(([sq, e]) => { out[wk][sq] = e.status === "ok" && !playing.includes(sq) ? { ...e, status: "draft", paused: true } : e; });
+  });
+  return out;
+}
+const isoDay = (d) => d.toISOString().slice(0, 10);
+/* Samedi du week-end d'une date (semaine du lundi au dimanche) */
+function weekKeyOf(d) {
+  const day = d.getUTCDay(); // 0 = dimanche
+  const sat = new Date(d.getTime() + (day === 0 ? -1 : 6 - day) * 86400000);
+  return isoDay(sat);
+}
+function weekendMatches(state, wk) {
+  return state.matches.filter((m) => { if (m.cancelled) return false; const d = matchDate(m); return d && weekKeyOf(d) === wk; });
+}
+/* Équipes qui jouent ce week-end, dans l'ordre de la hiérarchie */
+function weekendSquads(state, wk) {
+  const ms = weekendMatches(state, wk);
+  return state.squads.filter((q) => ms.some((m) => m.squad === q.id)).map((q) => q.id);
+}
+/* Joueurs déjà retenus (roster validé) par une autre équipe ce week-end */
+function rosterLocks(state, wk, exceptSq) {
+  const locks = {};
+  const playing = weekendSquads(state, wk); // une équipe dont le match a été annulé / déplacé ne bloque plus personne
+  Object.entries((state.rosters || {})[wk] || {}).forEach(([sq, e]) => {
+    if (sq === exceptSq || e.status !== "ok" || !playing.includes(sq)) return;
+    e.picks.forEach((pid) => { locks[pid] = sq; });
+  });
+  return locks;
+}
+/* Date limite : Équipe 1 le mercredi soir, Équipe 2 le jeudi, Équipe 3 le vendredi */
+function rosterDeadline(wk, rank) {
+  const sat = new Date(wk + "T00:00:00Z");
+  return isoDay(new Date(sat.getTime() - (3 - Math.min(rank, 2)) * 86400000));
+}
+const canRosterSq = (access, sq) => canSq(access, sq, "compo") || canSq(access, sq, "roster");
+const FR_DAYS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+function frDate(d) { return `${FR_DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${FR_MONTHS[d.getUTCMonth()]}`; }
+function wkLabel(wk) {
+  const sat = new Date(wk + "T00:00:00Z"); const sun = new Date(sat.getTime() + 86400000);
+  return sat.getUTCMonth() === sun.getUTCMonth() ? `${sat.getUTCDate()}-${sun.getUTCDate()} ${FR_MONTHS[sun.getUTCMonth()]}` : `${sat.getUTCDate()} ${FR_MONTHS[sat.getUTCMonth()]} - ${sun.getUTCDate()} ${FR_MONTHS[sun.getUTCMonth()]}`;
+}
+
+async function handleRoster(store, state, session, action, body, event) {
+  const access = accessOf(state, session);
+  const wk = String(body.wk || "");
+  const sq = String(body.squad || "");
+  if (!WK_RE.test(wk)) return fail(400, "Week-end invalide.");
+  const order = weekendSquads(state, wk);
+  if (!order.includes(sq)) return fail(400, "Cette équipe ne joue pas ce week-end.");
+  if (!canRosterSq(access, sq)) return fail(403, "Réservé au staff de cette équipe (droit compo ou effectif).");
+  const rank = order.indexOf(sq);
+  const all = { ...(state.rosters || {}) };
+  const wkRec = { ...(all[wk] || {}) };
+  const cur = wkRec[sq] || { status: "draft", picks: [], by: "", at: "", notified: {} };
+  const sqName = (state.squads.find((q) => q.id === sq) || {}).name || sq;
+  const locks = rosterLocks(state, wk, sq);
+  const pool = new Set(Object.keys(state.members || {}).filter((pid) => state.members[pid][sq] && !locks[pid]));
+  const cleanPicks = () => {
+    const picks = [...new Set(Array.isArray(body.picks) ? body.picks : [])];
+    const bad = picks.find((pid) => !pool.has(pid));
+    if (bad) {
+      const p = state.roster.find((r) => r.id === bad);
+      const who = p ? `${p.prenom} ${p.nom}` : bad;
+      return { error: locks[bad] ? `${who} est déjà retenu par l'${(state.squads.find((q) => q.id === locks[bad]) || {}).name} ce week-end.` : `${who} ne fait pas partie de l'${sqName} (écran Joueurs).` };
+    }
+    return { picks };
+  };
+  let mailJob = null;
+  if (action === "rosterSave") {
+    if (cur.status === "ok") return fail(400, "Roster déjà validé : rouvre-le pour le modifier.");
+    const c = cleanPicks(); if (c.error) return fail(400, c.error);
+    wkRec[sq] = { ...cur, status: "draft", picks: c.picks };
+  } else if (action === "rosterValidate") {
+    if (cur.status === "ok") return fail(400, "Roster déjà validé.");
+    const waiting = order.slice(0, rank).filter((x) => !(wkRec[x] && wkRec[x].status === "ok"));
+    if (waiting.length) return fail(409, `En attente du roster de l'${(state.squads.find((q) => q.id === waiting[0]) || {}).name}.`);
+    const c = cleanPicks(); if (c.error) return fail(400, c.error);
+    if (!c.picks.length) return fail(400, "Sélectionne au moins un joueur.");
+    wkRec[sq] = { ...cur, status: "ok", picks: c.picks, by: session.username, at: new Date().toISOString() };
+    // les joueurs retenus sortent des brouillons des équipes suivantes
+    order.slice(rank + 1).forEach((x) => { if (wkRec[x] && wkRec[x].status !== "ok") wkRec[x] = { ...wkRec[x], picks: wkRec[x].picks.filter((pid) => !c.picks.includes(pid)) }; });
+    mailJob = { again: !!Object.keys(cur.notified || {}).length };
+  } else if (action === "rosterReopen") {
+    if (cur.status !== "ok") return fail(400, "Ce roster n'est pas validé.");
+    const lowerDone = order.slice(rank + 1).some((x) => wkRec[x] && wkRec[x].status === "ok");
+    if (lowerDone && !access.owner) return fail(409, "L'équipe suivante a déjà validé : seul le propriétaire peut rouvrir.");
+    wkRec[sq] = { ...cur, status: "draft" };
+  } else return fail(400, "Action inconnue.");
+  all[wk] = wkRec;
+  let s2 = { ...state, rosters: all };
+  const verb = { rosterSave: "a préparé", rosterValidate: "a validé", rosterReopen: "a rouvert" }[action];
+  if (action !== "rosterSave") s2 = logAction(s2, session.username, `${verb} le roster ${sqName} du week-end ${wkLabel(wk)}`);
+  // Mails à la validation : coachs de l'équipe suivante (ou propriétaire à la fin) + convocation des joueurs
+  let mail = null;
+  if (mailJob) {
+    mail = await sendRosterMails(s2, session, wk, sq, order, event);
+    const e = s2.rosters[wk][sq];
+    s2 = { ...s2, rosters: { ...s2.rosters, [wk]: { ...s2.rosters[wk], [sq]: { ...e, notified: mail.notified } } } };
+  }
+  await saveAppState(store, s2);
+  return ok({ state: sanitize(s2, session), mail });
+}
+
+async function sendRosterMails(state, session, wk, sq, order, event) {
+  const e = state.rosters[wk][sq];
+  const prev = e.notified || {};
+  const report = { configured: false, coaches: 0, players: 0, removed: 0, failed: 0, notified: { ...prev } };
+  const cfg = mailConfig();
+  if (!cfg) {
+    // pas d'envoi possible : on note quand même qui est convoqué, pour ne pas renvoyer plus tard
+    report.notified = Object.fromEntries(e.picks.map((pid) => [pid, prev[pid] || ""]));
+    return report;
+  }
+  report.configured = true;
+  const site = siteUrl(event);
+  const transport = makeTransport(cfg);
+  const test = session.space === "test" ? "[TEST] " : "";
+  const sqObj = state.squads.find((q) => q.id === sq);
+  const name = (pid) => { const p = state.roster.find((r) => r.id === pid); return p ? `${p.prenom} ${p.nom}` : pid; };
+  const ms = weekendMatches(state, wk).filter((m) => m.squad === sq).sort((a, b) => (matchDate(a) - matchDate(b)) || String(a.time || "").localeCompare(String(b.time || "")));
+  const matchLines = ms.map((m) => ({ when: frDate(matchDate(m)) + (m.time ? " · " + m.time : ""), what: (m.location === "domicile" ? "Domicile" : "Extérieur") + (m.opponent ? " vs " + m.opponent : "") }));
+  const send = async (to, m) => { try { await sendMail(transport, cfg, { to, ...m, subject: test + m.subject }); return true; } catch (err) { report.failed++; return false; } };
+  // 1. coachs de l'équipe suivante, ou propriétaire(s) quand c'est la dernière
+  const next = order[order.indexOf(sq) + 1];
+  const locks = rosterLocks(state, wk, next || "");
+  if (next) {
+    const nq = state.squads.find((q) => q.id === next);
+    const avail = Object.keys(state.members || {}).filter((pid) => state.members[pid][next] && !locks[pid]).map(name).sort();
+    const m = renderRosterCoachMail({ wk: wkLabel(wk), from: sqObj.name, to: nq.name, picks: e.picks.map(name).sort(), avail, deadline: frDate(new Date(rosterDeadline(wk, order.indexOf(next)) + "T00:00:00Z")), link: site ? `${site}/?selection=${wk}` : "", again: !!Object.keys(prev).length });
+    for (const c of staffRecipients(state, next)) if (await send(c.email, m)) report.coaches++;
+  } else {
+    const summary = order.map((x) => { const q = state.squads.find((y) => y.id === x); const r = state.rosters[wk][x]; return { team: q.name, n: r ? r.picks.length : 0, names: r ? r.picks.map(name).sort() : [] }; });
+    const m = renderRosterDoneMail({ wk: wkLabel(wk), summary, link: site ? `${site}/?selection=${wk}` : "" });
+    const owners = staffAccounts(state).filter((x) => x.acc.role === "owner" && x.email);
+    for (const o of owners) if (await send(o.email, m)) report.coaches++;
+  }
+  // 2. convocation des joueurs retenus (pas encore prévenus), et « changement » pour ceux retirés
+  const notified = {};
+  // coachs et staff de l'équipe (noms seulement, pas d'adresse)
+  const coachNames = staffAccounts(state).filter((x) => ["coach", "staff"].includes((x.acc.squads || {})[sq])).map((x) => x.name).sort();
+  for (const pid of e.picks) {
+    const mates = e.picks.filter((x) => x !== pid).map(name).sort();
+    const p = state.roster.find((r) => r.id === pid);
+    if (prev[pid]) { notified[pid] = prev[pid]; continue; }
+    const mail = p && p.mail;
+    if (mail && mail.email && mail.conv !== false) {
+      const m = renderConvocationMail({ prenom: p.prenom, team: sqObj.name, wk: wkLabel(wk), matches: matchLines, mates, coaches: coachNames, link: site ? site + "/" : "" });
+      if (await send(mail.email, m)) report.players++;
+    }
+    notified[pid] = new Date().toISOString();
+  }
+  for (const pid of Object.keys(prev)) {
+    if (e.picks.includes(pid)) continue;
+    const p = state.roster.find((r) => r.id === pid);
+    const mail = p && p.mail;
+    if (mail && mail.email && mail.conv !== false) {
+      const m = renderRosterRemovedMail({ prenom: p.prenom, team: sqObj.name, wk: wkLabel(wk), link: site ? site + "/" : "" });
+      if (await send(mail.email, m)) report.removed++;
+    }
+  }
+  report.notified = notified;
+  return report;
+}
+
 /* ------------------------------------------------------------------ */
 /* Mutations — every role check happens here, server-side only         */
 /* ------------------------------------------------------------------ */
@@ -1001,6 +1211,7 @@ async function applyMutation(store, state, session, action, body, mainStore) {
   const mSq = (matchId) => squadOfMatch(state, matchId);
   const NO = { error: "Pas de droit sur cette équipe." };
   let s = state;
+  let importReport = null;
 
   switch (action) {
     case "setPresence": {
@@ -1056,7 +1267,7 @@ async function applyMutation(store, state, session, action, body, mainStore) {
       if (!s.roster.some((p) => p.id === playerId)) return { error: "Joueur introuvable." };
       const email = String(body.email || "").trim().toLowerCase().slice(0, 120);
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: "Adresse mail invalide." };
-      const doc = email ? { email, me: !!body.me, team: !!body.team, at: new Date().toISOString().slice(0, 10) } : null;
+      const doc = email ? { email, me: !!body.me, team: !!body.team, conv: body.conv !== false, at: new Date().toISOString().slice(0, 10) } : null;
       s = { ...s, roster: s.roster.map((p) => { if (p.id !== playerId) return p; const { mail, ...rest } = p; return doc ? { ...rest, mail: doc } : rest; }) };
       s = logAction(s, actingUser, `a mis à jour ses préférences de mails (${targetLabelFor(s, playerId)})`);
       break;
@@ -1119,6 +1330,58 @@ async function applyMutation(store, state, session, action, body, mainStore) {
       const newMatch = { id, label: `Match ${s.matches.filter((m) => m.season === season && m.squad === squad).length + 1}`, date: "", opponent: "", location: "exterieur", season, squad, innings: emptyInnings() };
       s = { ...s, matches: [...s.matches, newMatch] };
       s = logAction(s, actingUser, `a ajouté "${newMatch.label}"`);
+      break;
+    }
+    case "importMatches": {
+      /* Import d'un calendrier (Excel / CSV lu dans l'appli) : ajoute les matchs, ou met à jour ceux qui existent déjà
+         (même équipe, même date, même adversaire) — réimporter un fichier corrigé ne crée pas de doublons. */
+      const rows = Array.isArray(body.rows) ? body.rows.slice(0, 300) : [];
+      if (!rows.length) return { error: "Aucun match à importer." };
+      const norm = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+      const clean = [];
+      for (const [i, r] of rows.entries()) {
+        const squad = String(r.squad || "");
+        if (!s.squads.some((q) => q.id === squad)) return { error: `Ligne ${i + 1} : équipe inconnue.` };
+        if (!canSq(access, squad, "manage")) return { error: `Ligne ${i + 1} : tu n'as pas le droit de gérer les matchs de l'${(s.squads.find((q) => q.id === squad) || {}).name}.` };
+        const iso = String(r.date || "");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || isNaN(new Date(iso + "T00:00:00Z")) || new Date(iso + "T00:00:00Z").toISOString().slice(0, 10) !== iso) return { error: `Ligne ${i + 1} : date invalide (${iso}).` };
+        const d = new Date(iso + "T00:00:00Z");
+        const time = String(r.time || "").trim().slice(0, 10);
+        if (time && !/^\d{1,2}:\d{2}$/.test(time)) return { error: `Ligne ${i + 1} : heure invalide (${time}).` };
+        clean.push({ squad, d, date: `${d.getUTCDate()} ${FR_MONTHS[d.getUTCMonth()]}`, season: String(d.getUTCFullYear()), time, opponent: String(r.opponent || "").trim().slice(0, 60), location: r.location === "domicile" ? "domicile" : "exterieur" });
+      }
+      let matches = [...s.matches];
+      const used = new Set();
+      let added = 0, updated = 0;
+      const seasons = new Set(s.seasons);
+      clean.sort((a, b) => a.d - b.d || a.time.localeCompare(b.time));
+      for (const r of clean) {
+        const same = matches.find((m) => !used.has(m.id) && m.squad === r.squad && !m.cancelled && (() => { const md = matchDate(m); return md && md.getTime() === r.d.getTime(); })() && norm(m.opponent) === norm(r.opponent) && (!m.time || !r.time || m.time === r.time));
+        if (same) {
+          used.add(same.id);
+          const upd = { ...same, time: r.time || same.time || "", location: r.location, opponent: r.opponent || same.opponent };
+          if (JSON.stringify(upd) !== JSON.stringify(same)) { matches = matches.map((m) => (m.id === same.id ? upd : m)); updated++; }
+          continue;
+        }
+        const id = "m-" + Date.now().toString(36) + crypto.randomBytes(3).toString("hex");
+        used.add(id);
+        matches.push({ id, label: "", date: r.date, time: r.time, opponent: r.opponent, location: r.location, season: r.season, squad: r.squad, innings: emptyInnings(), cancelled: false });
+        seasons.add(r.season);
+        added++;
+      }
+      // numéros « Match N » dans l'ordre des dates, par équipe et par saison (les noms personnalisés sont gardés)
+      const bySq = {};
+      matches.forEach((m) => { (bySq[m.squad + "|" + m.season] = bySq[m.squad + "|" + m.season] || []).push(m); });
+      const relabel = {};
+      Object.values(bySq).forEach((list) => {
+        list.slice().sort((a, b) => (matchDate(a) || 0) - (matchDate(b) || 0) || String(a.time || "").localeCompare(String(b.time || ""))).forEach((m, i) => {
+          if (!m.label || /^Match \d+$/.test(m.label)) relabel[m.id] = `Match ${i + 1}`;
+        });
+      });
+      matches = matches.map((m) => (relabel[m.id] ? { ...m, label: relabel[m.id] } : m));
+      s = { ...s, matches, seasons: [...seasons].sort((a, b) => b.localeCompare(a)) };
+      s = logAction(s, actingUser, `a importé un calendrier (${added} match${added > 1 ? "s" : ""} ajouté${added > 1 ? "s" : ""}, ${updated} mis à jour)`);
+      importReport = { added, updated };
       break;
     }
     case "deleteMatch": {
@@ -1380,6 +1643,67 @@ async function applyMutation(store, state, session, action, body, mainStore) {
       s = logAction(s, actingUser, `a ajouté le joueur "${prenom} ${nom.toUpperCase()}" à l'effectif`);
       break;
     }
+    case "importPlayers": {
+      /* Import de l'effectif (Excel / CSV) par le propriétaire, avant que les joueurs créent leur compte :
+         nouveaux joueurs ajoutés, joueurs existants (même nom + prénom) mis à jour, équipes manquantes créées. */
+      if (!access.owner) return { error: "Réservé au compte propriétaire." };
+      const rows = Array.isArray(body.rows) ? body.rows.slice(0, 400) : [];
+      if (!rows.length) return { error: "Aucun joueur à importer." };
+      const key = (n, p) => String(n + " " + p).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+      let squads = [...s.squads];
+      const created = [];
+      const sqOf = (name) => {
+        const n = String(name || "").trim().slice(0, 40);
+        if (!n) return null;
+        const nk = key(n, "");
+        let q = squads.find((x) => key(x.name, "") === nk);
+        if (!q) {
+          if (squads.length >= 6) return { error: `6 équipes maximum (« ${n} » en trop).` };
+          let k = squads.length + 1, id = "e" + k;
+          while (squads.some((x) => x.id === id)) id = "e" + ++k;
+          q = { id, name: n, level: "", target: 12, color: SQUAD_COLORS[squads.length % SQUAD_COLORS.length] };
+          squads = [...squads, q]; created.push(n);
+        }
+        return q;
+      };
+      let roster = [...s.roster], positions = { ...s.positions }, presence = { ...s.presence }, members = { ...s.members };
+      let added = 0, updated = 0;
+      for (const [i, r] of rows.entries()) {
+        const prenom = String(r.prenom || "").trim().slice(0, 40), nom = String(r.nom || "").trim().slice(0, 40).toUpperCase();
+        if (!prenom && !nom) continue;
+        const numero = String(r.numero == null ? "" : r.numero).replace(/[^0-9]/g, "").slice(0, 3);
+        const pos = (Array.isArray(r.positions) ? r.positions : []).filter((x) => POSTES.includes(x)).slice(0, 3);
+        const email = String(r.email || "").trim().toLowerCase().slice(0, 120);
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: `Ligne ${r.line || i + 1} : adresse mail invalide (${email}).` };
+        const teams = {};
+        for (const [name, v] of Object.entries(r.teams || {})) {
+          const q = sqOf(name);
+          if (q && q.error) return { error: q.error };
+          if (q && MEMBER_VALUES.includes(v)) teams[q.id] = v;
+        }
+        let p = roster.find((x) => key(x.nom, x.prenom) === key(nom, prenom));
+        if (!p) {
+          const id = slugify(nom || "joueur", prenom || "x") + "-" + crypto.randomBytes(3).toString("hex");
+          p = { id, nom, prenom, numero, pos1: pos[0] || "", pos2: pos[1] || "", pos3: pos[2] || "" };
+          if (email) p.mail = { email, me: false, team: false, conv: true, at: new Date().toISOString().slice(0, 10) };
+          roster.push(p); presence[id] = {}; positions[id] = { pos1: p.pos1, pos2: p.pos2, pos3: p.pos3 }; added++;
+        } else {
+          const q = { ...p };
+          if (numero) q.numero = numero;
+          if (pos.length) { q.pos1 = pos[0] || ""; q.pos2 = pos[1] || ""; q.pos3 = pos[2] || ""; positions[p.id] = { pos1: q.pos1, pos2: q.pos2, pos3: q.pos3 }; }
+          if (email && !(p.mail && p.mail.email)) q.mail = { email, me: false, team: false, conv: true, at: new Date().toISOString().slice(0, 10) }; // on ne remplace pas une adresse choisie par le joueur
+          if (JSON.stringify(q) !== JSON.stringify(p) || (Object.keys(teams).length && JSON.stringify(teams) !== JSON.stringify(members[p.id] || {}))) updated++;
+          roster = roster.map((x) => (x.id === p.id ? q : x));
+          p = q;
+        }
+        // le fichier fait foi pour les équipes du joueur (s'il en indique)
+        if (Object.keys(teams).length) members[p.id] = teams;
+      }
+      s = { ...s, roster, positions, presence, members, squads };
+      s = logAction(s, actingUser, `a importé l'effectif (${added} joueur${added > 1 ? "s" : ""} ajouté${added > 1 ? "s" : ""}, ${updated} mis à jour${created.length ? ", équipes créées : " + created.join(", ") : ""})`);
+      importReport = { added, updated, squads: created };
+      break;
+    }
     case "updatePlayerField": {
       if (!isStaffRole(role)) return { error: "Réservé au coaching staff." };
       const { playerId, field, value } = body;
@@ -1546,7 +1870,7 @@ async function applyMutation(store, state, session, action, body, mainStore) {
   }
 
   await saveAppState(store, s);
-  return { state: s };
+  return { state: s, ...(importReport ? { importReport } : {}) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1746,7 +2070,8 @@ async function handleScoresheet(store, state, session, action, body, event) {
     const player = typeof body.player === "string" && (rc.rows || []).some((r) => r.id === body.player) ? body.player : null;
     const md = JSON.parse((await store.get(MVP_PREFIX + id)) || "null");
     const mvp = md && md.coach ? { n: ((rc.rows || []).find((x) => x.id === md.coach.pid) || {}).n || "", why: md.coach.why || "" } : null;
-    const m = renderRecapMail(rc, { player, site: body.site && /^https?:\/\/[a-z0-9.:-]+$/i.test(body.site) ? body.site : "", sprayImg: img, mvp });
+    const psite = body.site && /^https?:\/\/[a-z0-9.:-]+$/i.test(body.site) ? body.site : "";
+    const m = renderRecapMail(rc, { player, site: psite, sprayImg: img, mvp, voteLink: player && psite && mvpOpen(md || { opensAt: rc.updated || Date.now() }) ? `${psite}/?mvp=${id}` : "" });
     // qui le recevrait (cases cochées dans « Mails du club »)
     if (body.sendToMe) {
       const cfg = mailConfig();
@@ -1784,6 +2109,7 @@ async function handleScoresheet(store, state, session, action, body, event) {
     const site = siteUrl(event);
     const transport = makeTransport(cfg);
     const mdoc = JSON.parse((await store.get(MVP_PREFIX + id)) || "null");
+    const voteOpen = mvpOpen(mdoc || { opensAt: rc.updated || Date.now() });
     const coachMvp = mdoc && mdoc.coach ? { n: ((rc.rows || []).find((x) => x.id === mdoc.coach.pid) || {}).n || "", why: mdoc.coach.why || "" } : null;
     const results = [];
     for (const it of items) {
@@ -1791,7 +2117,8 @@ async function handleScoresheet(store, state, session, action, body, event) {
       if (!r) { results.push({ pid: it && it.pid, ok: false, error: "pas inscrit" }); continue; }
       if (sent[r.pid] && !body.force) { results.push({ pid: r.pid, ok: true, skipped: true }); continue; }
       const img = r.kind === "me" && typeof it.sprayImg === "string" && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(it.sprayImg) && it.sprayImg.length < 600 * 1024 ? it.sprayImg : "";
-      const m = renderRecapMail(rc, { player: r.kind === "me" ? r.pid : null, site, sprayImg: img ? "cid:frappes@dragons" : "", mvp: coachMvp });
+      const played = (rc.rows || []).some((x) => x.id === r.pid);
+      const m = renderRecapMail(rc, { player: r.kind === "me" ? r.pid : null, site, sprayImg: img ? "cid:frappes@dragons" : "", mvp: coachMvp, voteLink: played && voteOpen && site ? `${site}/?mvp=${id}` : "" });
       try {
         await sendMail(transport, cfg, { to: r.email, subject: (session.space === "test" ? "[TEST] " : "") + m.subject, html: m.html, text: m.text, images: img ? [{ cid: "frappes@dragons", dataUrl: img }] : [] });
         sent[r.pid] = { at: new Date().toISOString(), kind: r.kind, by: session.username };
@@ -2141,6 +2468,9 @@ export async function handler(event) {
     if (["listBackups", "getBackup", "restoreBackup"].includes(action)) {
       return await handleBackup(store, state, session, action, body);
     }
+    if (["rosterSave", "rosterValidate", "rosterReopen"].includes(action)) {
+      return await handleRoster(store, state, session, action, body, event);
+    }
     if (["mailStatus", "sendTestMail", "setAccountEmail"].includes(action)) {
       return await handleMail(store, state, session, action, body, event);
     }
@@ -2157,7 +2487,7 @@ export async function handler(event) {
 
     const result = await applyMutation(store, state, session, action, body, main);
     if (result.error) return fail(400, result.error);
-    return ok({ state: sanitize(result.state, session), newToken: result.newToken });
+    return ok({ state: sanitize(result.state, session), newToken: result.newToken, ...(result.importReport ? { importReport: result.importReport } : {}) });
   } catch (e) {
     return fail(500, "Erreur serveur: " + e.message);
   }
