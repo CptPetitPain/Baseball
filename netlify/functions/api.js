@@ -220,7 +220,8 @@ function normalizeState(s, blank) {
   const sqIds = squads.map((q) => q.id);
   const firstSq = sqIds[0];
   const fixSq = (v) => (sqIds.includes(v) ? v : firstSq);
-  const matches = (s.matches && (s.matches.length || blank) ? s.matches : base.matches).map((m) => ({
+  // une liste de matchs vide est voulue (remise à zéro) : on ne remet jamais le calendrier par défaut par-dessus
+  const matches = (Array.isArray(s.matches) ? s.matches : base.matches).map((m) => ({
     ...m,
     innings: m.innings || emptyInnings(),
     location: m.location || "exterieur",
@@ -280,7 +281,7 @@ function blankState() {
 }
 
 function seasonsOf(s, matches) {
-  const set = new Set([...(Array.isArray(s.seasons) ? s.seasons : []), CURRENT_SEASON]);
+  const set = new Set(Array.isArray(s.seasons) && s.seasons.length ? s.seasons : [CURRENT_SEASON]);
   matches.forEach((m) => m.season && set.add(String(m.season)));
   (s.standings || []).forEach((t) => t.season && set.add(String(t.season)));
   const seasons = Array.from(set).filter(Boolean).sort((a, b) => b.localeCompare(a));
@@ -2001,6 +2002,161 @@ function recapRecipients(state, rc) {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/* Transférer les données d'une équipe vers une autre (ex. tout l'historique rangé par défaut dans l'Équipe 1
+   qui appartient en fait à l'Équipe 2) : matchs (+ présences, compos, résultats qui suivent le match),
+   rosters du week-end, classement, feuilles de match et récaps, et en option les joueurs habituel / renfort. */
+async function handleSquadTransfer(store, state, session, body) {
+  const access = accessOf(state, session);
+  if (!access.owner) return fail(403, "Réservé au compte propriétaire.");
+  const from = String(body.from || ""), to = String(body.to || "");
+  const qf = state.squads.find((q) => q.id === from), qt = state.squads.find((q) => q.id === to);
+  if (!qf || !qt || from === to) return fail(400, "Choisis deux équipes différentes.");
+  const season = String(body.season || "all");
+  const inSeason = (x) => season === "all" || String(x || "") === season;
+  const opt = { matches: body.matches !== false, standings: body.standings !== false, members: !!body.members };
+  const moved = new Set();
+  let s2 = { ...state };
+  if (opt.matches) {
+    s2.matches = s2.matches.map((m) => { if (m.squad === from && inSeason(m.season)) { moved.add(m.id); return { ...m, squad: to }; } return m; });
+    // rosters du week-end de l'équipe qui n'a plus de match ce week-end
+    const rosters = {};
+    Object.entries(s2.rosters || {}).forEach(([wk, rec]) => {
+      const r = { ...rec };
+      if (r[from] && !weekendSquads(s2, wk).includes(from)) { if (!r[to]) r[to] = r[from]; delete r[from]; }
+      rosters[wk] = r;
+    });
+    s2.rosters = rosters;
+  }
+  let nStand = 0;
+  if (opt.standings) s2.standings = s2.standings.map((t) => { if (t.squad === from && inSeason(t.season)) { nStand++; return { ...t, squad: to }; } return t; });
+  let nMembers = 0;
+  if (opt.members) {
+    const members = {};
+    Object.entries(s2.members || {}).forEach(([pid, rec]) => {
+      const r = { ...rec };
+      if (r[from]) { if (!r[to]) r[to] = r[from]; delete r[from]; nMembers++; }
+      if (Object.keys(r).length) members[pid] = r;
+    });
+    s2.members = members;
+  }
+  // feuilles de match et récaps rangés avec l'équipe
+  let nSheets = 0;
+  const firstSq = state.squads[0].id;
+  for (const prefix of [SHEET_PREFIX, RECAP_PREFIX]) {
+    const { blobs } = await store.list({ prefix });
+    for (const b of blobs) {
+      const raw = await store.get(b.key);
+      if (!raw) continue;
+      let doc; try { doc = JSON.parse(raw); } catch (e) { continue; }
+      const sq = doc.squad || firstSq;
+      if (sq !== from) continue;
+      const link = doc.linkedMatchId || (prefix === RECAP_PREFIX ? doc.matchId : null);
+      const yearOk = inSeason(String(doc.date || "").slice(0, 4)) || inSeason(doc.season);
+      if ((link && moved.has(link)) || (!link && opt.matches && yearOk)) {
+        await store.set(b.key, JSON.stringify({ ...doc, squad: to, ...(doc.squadName ? { squadName: qt.name } : {}) }));
+        if (prefix === SHEET_PREFIX) nSheets++;
+      }
+    }
+  }
+  s2 = logAction(s2, session.username, `a transféré de l'${qf.name} vers l'${qt.name}${season !== "all" ? " (saison " + season + ")" : ""} : ${moved.size} match${moved.size > 1 ? "s" : ""}, ${nStand} équipe${nStand > 1 ? "s" : ""} du classement${opt.members ? `, ${nMembers} joueur${nMembers > 1 ? "s" : ""}` : ""}`);
+  await saveAppState(store, s2);
+  return ok({ state: sanitize(s2, session), report: { matches: moved.size, standings: nStand, members: nMembers, sheets: nSheets } });
+}
+
+/* Repartir de zéro (nouvelle saison) : efface matchs, résultats, présences, compos, rosters, feuilles de match,
+   récaps, MVP ; garde les comptes, les équipes, les adversaires / logos. Copie de l'état gardée avant. */
+async function handleResetClub(store, state, session, body) {
+  const access = accessOf(state, session);
+  if (!access.owner) return fail(403, "Réservé au compte propriétaire.");
+  if (String(body.confirm || "").trim().toUpperCase() !== "REMETTRE A ZERO") return fail(400, "Tape REMETTRE A ZERO pour confirmer.");
+  const season = String(body.season || "").trim();
+  if (!SEASON_RE.test(season)) return fail(400, "Nouvelle saison invalide (ex : 2027).");
+  const players = ["keep", "teams", "unclaimed"].includes(body.players) ? body.players : "keep";
+  await store.set(BACKUP_PREFIX + "avant-remise-a-zero-" + Date.now(), JSON.stringify(state));
+  let deleted = 0;
+  for (const prefix of [SHEET_PREFIX, RECAP_PREFIX, MVP_PREFIX, MVP_VOTE_PREFIX, LIVE_PREFIX, MAILLOG_PREFIX, LINEUP_IMG_PREFIX]) {
+    const { blobs } = await store.list({ prefix });
+    for (const b of blobs) { await store.delete(b.key); deleted++; }
+  }
+  const claimed = new Set(Object.values(state.accounts).map((a) => a.playerId).filter(Boolean));
+  let roster = state.roster;
+  if (players === "unclaimed") roster = roster.filter((p) => claimed.has(p.id));
+  const ids = new Set(roster.map((p) => p.id));
+  const keepObj = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => ids.has(k)));
+  let next = {
+    ...state,
+    roster,
+    positions: keepObj(state.positions),
+    presence: Object.fromEntries(roster.map((p) => [p.id, {}])),
+    members: players === "teams" ? {} : keepObj(state.members),
+    matches: [], lineups: {}, callups: {}, rosters: {},
+    standings: body.standings === false ? state.standings : [],
+    seasons: [season], currentSeason: season,
+    auditLog: [],
+  };
+  const removed = state.roster.length - roster.length;
+  next = logAction(next, session.username, `a remis l'appli à zéro pour la saison ${season} (${state.matches.length} matchs effacés${removed ? `, ${removed} joueurs sans compte retirés` : ""}${players === "teams" ? ", équipes des joueurs vidées" : ""})`);
+  await saveAppState(store, next);
+  return ok({ state: sanitize(next, session), report: { matches: state.matches.length, removed, files: deleted } });
+}
+
+/* Fusionner deux fiches du même joueur (doublon) : on garde « keep », on retire « remove ».
+   Présences, équipes, compos, appels, rosters, feuilles de match, récaps et votes MVP passent sur la fiche gardée. */
+async function handleMergePlayers(store, state, session, body) {
+  const access = accessOf(state, session);
+  const keep = String(body.keep || ""), remove = String(body.remove || "");
+  const pk = state.roster.find((p) => p.id === keep), pr = state.roster.find((p) => p.id === remove);
+  if (!pk || !pr || keep === remove) return fail(400, "Joueurs introuvables.");
+  const sqs = [...new Set([...Object.keys((state.members || {})[keep] || {}), ...Object.keys((state.members || {})[remove] || {})])];
+  if (!access.owner && !(sqs.length ? sqs.every((sq) => canSq(access, sq, "roster")) : canAny(access, "roster"))) return fail(403, "Il faut le droit « effectif » sur les équipes de ces deux joueurs (ou le compte propriétaire).");
+  const accK = Object.keys(state.accounts).find((u) => state.accounts[u].playerId === keep);
+  const accR = Object.keys(state.accounts).find((u) => state.accounts[u].playerId === remove);
+  if (accK && accR) return fail(409, `Les deux fiches ont un compte (@${accK} et @${accR}) : supprime d'abord le compte en trop (Suivi › Comptes), puis fusionne.`);
+  let s2 = JSON.parse(JSON.stringify(state));
+  // fiche : on complète ce qui manque sur la fiche gardée
+  const merged = { ...pr, ...Object.fromEntries(Object.entries(pk).filter(([, v]) => v !== "" && v != null)), id: keep };
+  if (!(pk.mail && pk.mail.email) && pr.mail) merged.mail = pr.mail;
+  if (!pk.live && pr.live) merged.live = pr.live;
+  s2.roster = s2.roster.filter((p) => p.id !== remove).map((p) => (p.id === keep ? merged : p));
+  const posK = s2.positions[keep] || {}, posR = s2.positions[remove] || {};
+  s2.positions[keep] = { pos1: posK.pos1 || posR.pos1 || "", pos2: posK.pos2 || posR.pos2 || "", pos3: posK.pos3 || posR.pos3 || "" };
+  delete s2.positions[remove];
+  s2.presence[keep] = { ...(s2.presence[remove] || {}), ...(s2.presence[keep] || {}) };
+  delete s2.presence[remove];
+  const mk = s2.members[keep] || {}, mr = s2.members[remove] || {};
+  const mm = {};
+  [...new Set([...Object.keys(mk), ...Object.keys(mr)])].forEach((sq) => { mm[sq] = mk[sq] === "reg" || mr[sq] === "reg" ? "reg" : "renf"; });
+  if (Object.keys(mm).length) s2.members[keep] = mm;
+  delete s2.members[remove];
+  Object.values(s2.callups || {}).forEach((rec) => { if (rec[remove]) { if (!rec[keep]) rec[keep] = rec[remove]; delete rec[remove]; } });
+  // toutes les autres références (compos, rosters du week-end, compte lié…) : remplacement de l'identifiant
+  const rx = new RegExp('"' + remove.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + '"', "g");
+  const { auditLog, ...rest } = s2;
+  s2 = { ...JSON.parse(JSON.stringify(rest).replace(rx, JSON.stringify(keep))), auditLog };
+  // feuilles de match, récaps, MVP
+  let files = 0;
+  for (const prefix of [SHEET_PREFIX, RECAP_PREFIX, MVP_PREFIX]) {
+    const { blobs } = await store.list({ prefix });
+    for (const b of blobs) {
+      const raw = await store.get(b.key);
+      if (raw && rx.test(raw)) { rx.lastIndex = 0; await store.set(b.key, raw.replace(rx, JSON.stringify(keep))); files++; }
+      rx.lastIndex = 0;
+    }
+  }
+  const { blobs: votes } = await store.list({ prefix: MVP_VOTE_PREFIX });
+  for (const b of votes) {
+    const parts = b.key.split("/");
+    if (parts.includes(remove)) {
+      const nk = parts.map((x) => (x === remove ? keep : x)).join("/");
+      await store.delete(b.key);
+      if (parts[2] !== remove || !votes.some((v) => v.key.split("/")[1] === parts[1] && v.key.split("/")[2] === keep)) await store.set(nk, "1");
+    }
+  }
+  s2 = logAction(s2, session.username, `a fusionné la fiche en double « ${pr.prenom} ${pr.nom} » avec « ${pk.prenom} ${pk.nom} »`);
+  await saveAppState(store, s2);
+  return ok({ state: sanitize(normalizeState(s2), session), report: { files, account: accR || accK || null } });
+}
+
 async function handleScoresheet(store, state, session, action, body, event) {
   /* Récaps des matchs terminés : lecture pour tous les comptes du club */
   if (action === "getRecaps") {
@@ -2468,6 +2624,9 @@ export async function handler(event) {
     if (["listBackups", "getBackup", "restoreBackup"].includes(action)) {
       return await handleBackup(store, state, session, action, body);
     }
+    if (action === "transferSquadData") return await handleSquadTransfer(store, state, session, body);
+    if (action === "resetClubData") return await handleResetClub(store, state, session, body);
+    if (action === "mergePlayers") return await handleMergePlayers(store, state, session, body);
     if (["rosterSave", "rosterValidate", "rosterReopen"].includes(action)) {
       return await handleRoster(store, state, session, action, body, event);
     }

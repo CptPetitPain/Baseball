@@ -135,7 +135,7 @@ const INITIAL_ROSTER = RAW_ROSTER.map(([nom, prenom, numero, p1, p2, p3]) => ({
 }));
 
 const STAFF_ROLES = ["coach", "owner"];
-export const APP_VERSION = "3.9"; // garder identique à public/version.js
+export const APP_VERSION = "3.11"; // garder identique à public/version.js
 function homeScreen(role) {
   return isStaffRole(role) || role === "scorer" ? "composition" : "player";
 }
@@ -914,6 +914,9 @@ export default function DragonsApp() {
 
         {session && screen === "members" && access && access.owner && (
           <PlayersImport state={state} token={authToken} onState={setState} />
+        )}
+        {session && screen === "members" && staffLike && canAnyC(access, "roster") && (
+          <DuplicatesCard state={state} token={authToken} onState={setState} canMerge={canAnyC(access, "roster")} />
         )}
         {session && screen === "members" && staffLike && (
           <MembersView state={state} {...sqProps} busy={busy}
@@ -1902,6 +1905,8 @@ function CoachView({
     <div>
       <div className="card wide">
         <h2>Vue d'ensemble par match {multi && curSquad && <SquadChip squad={curSquad} />}</h2>
+        {multi && <div className="hint" style={{ marginTop: -4, marginBottom: 8 }}>{squadSel === "all" ? "Tous les matchs du club (la pastille indique l'équipe)." : `Matchs de l'${(squadById(state, squadSel) || {}).name} · change d'équipe avec le choix « Équipe » ${"en haut"}.`}</div>}
+        {multi && suiviMatches.length === 0 && <div className="sel-wait" style={{ marginBottom: 8 }}>Aucun match pour {squadSel === "all" ? "le club" : "l'" + (squadById(state, squadSel) || {}).name} sur cette saison : ajoute-les dans Matchs (ou « Importer un calendrier »), ou choisis une autre équipe.</div>}
         {readOnly && <div className="ro-banner">Lecture seule · tu vois cette équipe avec ta casquette entraîneur, rien n'est modifiable ici.</div>}
         <select
           className="match-select"
@@ -1919,7 +1924,9 @@ function CoachView({
               key={m.id}
               className={"mtab" + (activeMatch === m.id ? " active" : "")}
               onClick={() => setActiveMatch(m.id)}
+              title={multi ? (squadById(state, m.squad) || {}).name : undefined}
             >
+              {multi && squadSel === "all" && <i className="mtab-dot" style={{ background: (squadById(state, m.squad) || {}).color }} aria-hidden="true" />}
               {m.label}
             </button>
           ))}
@@ -4377,6 +4384,75 @@ function staffOfSquad(state, sqId) {
     return { username: u, playerId: a.playerId || null, role: a.squads[sqId], name: p ? `${p.prenom} ${p.nom}` : a.label || u };
   }).sort((x, y) => (x.role === y.role ? x.name.localeCompare(y.name) : x.role === "coach" ? -1 : 1));
 }
+/* Doublons possibles : même nom à un accent / une faute près, ou nom et prénom inversés */
+const nkey = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
+function lev(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function similarName(a, b) {
+  const an = nkey(a.nom), ap = nkey(a.prenom), bn = nkey(b.nom), bp = nkey(b.prenom);
+  if (!an && !ap) return false;
+  if (an + ap === bn + bp || an + ap === bp + bn) return true;
+  const close = (x, y) => x && y && (x === y || (Math.min(x.length, y.length) >= 3 && (x.startsWith(y) || y.startsWith(x))) || (Math.min(x.length, y.length) >= 4 && lev(x, y) <= (Math.max(x.length, y.length) >= 7 ? 2 : 1)));
+  return (an === bn && close(ap, bp)) || (ap === bp && close(an, bn));
+}
+function findDuplicates(roster) {
+  const out = [];
+  for (let i = 0; i < roster.length; i++) for (let j = i + 1; j < roster.length; j++) if (similarName(roster[i], roster[j])) out.push([roster[i], roster[j]]);
+  return out;
+}
+const DUP_IGNORE_KEY = "dragons-dup-ignore";
+function DuplicatesCard({ state, token, onState, canMerge }) {
+  const [ignored, setIgnored] = useState(() => readStore(DUP_IGNORE_KEY, []) || []);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const pairs = findDuplicates(state.roster).filter(([a, b]) => !ignored.includes([a.id, b.id].sort().join("|")));
+  if (!pairs.length && !msg) return null;
+  const accOf = (pid) => Object.entries(state.accounts || {}).find(([, a]) => a.playerId === pid);
+  const nPres = (pid) => Object.entries((state.presence || {})[pid] || {}).filter(([k, v]) => !/-(why|vehicule)$/.test(k) && v).length;
+  async function merge(keep, remove) {
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      const r = await callApi({ action: "mergePlayers", token, keep: keep.id, remove: remove.id });
+      onState(r.state);
+      setMsg(`Fusionné ✓ « ${remove.prenom} ${remove.nom} » a rejoint « ${keep.prenom} ${keep.nom} » (présences, équipes, compos, feuilles de match et récaps).`);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  function ignore(a, b) { const v = [...ignored, [a.id, b.id].sort().join("|")]; setIgnored(v); writeStore(DUP_IGNORE_KEY, v); }
+  const side = (p, other) => {
+    const acc = accOf(p.id);
+    return (
+      <div className="dup-side">
+        <b>{p.prenom} {p.nom}</b>{p.numero ? <span className="recap-num"> #{p.numero}</span> : null}
+        <div className="dup-meta">{acc ? <span className="dup-acc">compte @{acc[0]}</span> : <span className="dup-noacc">pas de compte</span>} · {nPres(p.id)} présence{nPres(p.id) > 1 ? "s" : ""}
+          {(state.squads || []).filter((q) => memberOf(state, p.id, q.id)).map((q) => <i key={q.id} className="mt-coach" style={{ "--sq": q.color }}>{q.name.replace(/[^0-9]/g, "") || q.name.slice(0, 3)}{memberOf(state, p.id, q.id) === "renf" ? "R" : ""}</i>)}
+        </div>
+        {canMerge && <button className="btn-primary small" disabled={busy} onClick={() => merge(p, other)}>Garder celle-ci</button>}
+      </div>
+    );
+  };
+  return (
+    <div className="card wide dup-card">
+      <h2>Doublons possibles {pairs.length ? `(${pairs.length})` : ""}</h2>
+      <div className="hint" style={{ marginBottom: 8 }}>Deux fiches qui se ressemblent (accent, faute de frappe, nom et prénom inversés). « Garder celle-ci » fusionne les deux : tout ce qui était sur l'autre fiche (présences, équipes, compos, feuilles de match, récaps, compte) passe sur celle gardée, puis l'autre disparaît. Supprimer un compte dans Suivi ne supprime pas la fiche du joueur : c'est pour ça qu'elle restait.</div>
+      {pairs.map(([a, b]) => (
+        <div className="dup-pair" key={a.id + b.id}>
+          {side(a, b)}
+          {side(b, a)}
+          <button className="btn-link dup-no" onClick={() => ignore(a, b)}>Ce n'est pas la même personne</button>
+        </div>
+      ))}
+      {msg && <div className="ok-msg" style={{ marginTop: 8 }}>{msg}</div>}
+      {err && <div className="error" style={{ marginTop: 8 }}>{err}</div>}
+    </div>
+  );
+}
+
 function MembersView({ state, squads, squadSel, access, onSetMember, busy }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -4686,6 +4762,121 @@ function CoachMailRow({ c, token, onSaved }) {
   );
 }
 
+/* Administration › transférer matchs, classement et joueurs d'une équipe vers une autre */
+function SquadTransfer({ state, token, onState }) {
+  const squads = state.squads || [];
+  const [from, setFrom] = useState(squads[0].id);
+  const [to, setTo] = useState((squads[1] || {}).id);
+  const [season, setSeason] = useState("all");
+  const [opt, setOpt] = useState({ matches: true, standings: true, members: false });
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const inS = (x) => season === "all" || String(x || "") === season;
+  const nM = state.matches.filter((m) => m.squad === from && inS(m.season)).length;
+  const nS = (state.standings || []).filter((t) => t.squad === from && inS(t.season)).length;
+  const nP = Object.values(state.members || {}).filter((r) => r[from]).length;
+  const name = (id) => (squads.find((q) => q.id === id) || {}).name;
+  const seasons = [...new Set(state.matches.filter((m) => m.squad === from).map((m) => m.season).filter(Boolean))].sort().reverse();
+  const reset = () => { setConfirm(false); setMsg(""); setErr(""); };
+  async function run() {
+    setBusy(true); setErr("");
+    try {
+      const r = await callApi({ action: "transferSquadData", token, from, to, season, ...opt });
+      onState(r.state);
+      const x = r.report || {};
+      setMsg(`Transféré vers l'${name(to)} ✓ ${x.matches} match${x.matches > 1 ? "s" : ""}${x.sheets ? ` (et ${x.sheets} feuille${x.sheets > 1 ? "s" : ""} de match)` : ""}, ${x.standings} ligne${x.standings > 1 ? "s" : ""} de classement${opt.members ? `, ${x.members} joueur${x.members > 1 ? "s" : ""}` : ""}.`);
+      setConfirm(false);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  const nothing = !(opt.matches && nM) && !(opt.standings && nS) && !(opt.members && nP);
+  return (
+    <div className="sq-transfer">
+      <div className="side-label" style={{ margin: "18px 0 6px" }}>Transférer d'une équipe à une autre</div>
+      <div className="hint" style={{ marginBottom: 8 }}>Ex. : tout l'historique a été rangé dans l'Équipe 1 alors qu'il appartient à l'Équipe 2. Les présences, compos, résultats, feuilles de match et récaps suivent leurs matchs.</div>
+      <div className="sqt-row">
+        <label>De <select value={from} onChange={(e) => { setFrom(e.target.value); if (e.target.value === to) setTo(squads.find((q) => q.id !== e.target.value).id); setSeason("all"); reset(); }}>{squads.map((q) => <option key={q.id} value={q.id}>{q.name}{q.level ? " · " + q.level : ""}</option>)}</select></label>
+        <span aria-hidden="true">→</span>
+        <label>vers <select value={to} onChange={(e) => { setTo(e.target.value); reset(); }}>{squads.filter((q) => q.id !== from).map((q) => <option key={q.id} value={q.id}>{q.name}{q.level ? " · " + q.level : ""}</option>)}</select></label>
+        <label>Saison <select value={season} onChange={(e) => { setSeason(e.target.value); reset(); }}><option value="all">Toutes</option>{seasons.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
+      </div>
+      <label className="mail-opt"><input type="checkbox" checked={opt.matches} onChange={(e) => { setOpt({ ...opt, matches: e.target.checked }); reset(); }} /><span><b>Les matchs ({nM})</b> avec présences, compos, résultats, feuilles de match et récaps</span></label>
+      <label className="mail-opt"><input type="checkbox" checked={opt.standings} onChange={(e) => { setOpt({ ...opt, standings: e.target.checked }); reset(); }} /><span><b>Le classement ({nS} équipe{nS > 1 ? "s" : ""})</b></span></label>
+      <label className="mail-opt"><input type="checkbox" checked={opt.members} onChange={(e) => { setOpt({ ...opt, members: e.target.checked }); reset(); }} /><span><b>Les joueurs ({nP})</b> : habituel / renfort de l'{name(from)} passent dans l'{name(to)} (toutes saisons)</span></label>
+      {!confirm ? (
+        <button className="btn-primary small" style={{ marginTop: 8 }} disabled={nothing || busy} onClick={() => setConfirm(true)}>Transférer vers l'{name(to)}</button>
+      ) : (
+        <div className="sel-confirm" style={{ marginTop: 8, borderColor: "#E9C46A" }}>
+          <b>Transférer de l'{name(from)} vers l'{name(to)}{season !== "all" ? ` (saison ${season})` : ""} ?</b>
+          <div className="hint" style={{ margin: "4px 0 8px" }}>{[opt.matches && nM ? `${nM} match${nM > 1 ? "s" : ""}` : "", opt.standings && nS ? `${nS} ligne${nS > 1 ? "s" : ""} de classement` : "", opt.members && nP ? `${nP} joueur${nP > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")}. Une sauvegarde du jour existe (Administration › Sauvegardes) si tu veux revenir en arrière.</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn-primary small" disabled={busy} onClick={run}>{busy ? "Transfert…" : "Oui, transférer"}</button>
+            <button className="btn-ghost small" onClick={() => setConfirm(false)}>Annuler</button>
+          </div>
+        </div>
+      )}
+      {msg && <div className="ok-msg" style={{ marginTop: 8 }}>{msg}</div>}
+      {err && <div className="error" style={{ marginTop: 8 }}>{err}</div>}
+    </div>
+  );
+}
+
+/* Administration › Repartir de zéro (nouvelle saison) */
+function ResetClubPanel({ state, token, onState }) {
+  const cur = parseInt(state.currentSeason, 10);
+  const [open, setOpen] = useState(false);
+  const [season, setSeason] = useState(String((cur || new Date().getFullYear()) + 1));
+  const [standings, setStandings] = useState(true);
+  const [players, setPlayers] = useState("keep");
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const claimed = new Set(Object.values(state.accounts || {}).map((a) => a.playerId).filter(Boolean));
+  const unclaimed = state.roster.filter((p) => !claimed.has(p.id)).length;
+  async function run() {
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      // 1. sauvegarde complète téléchargée sur l'appareil (matchs, feuilles de match, adversaires…)
+      const b = await callApi({ action: "getBackup", token });
+      const blob = new Blob([JSON.stringify(b.backup, null, 1)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `dragons-sauvegarde-avant-remise-a-zero-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+      // 2. remise à zéro
+      const r = await callApi({ action: "resetClubData", token, confirm: typed, season, standings, players });
+      onState(r.state);
+      const x = r.report || {};
+      setMsg(`C'est reparti pour la saison ${season} ✓ ${x.matches} match${x.matches > 1 ? "s" : ""} effacé${x.matches > 1 ? "s" : ""}${x.removed ? `, ${x.removed} joueur${x.removed > 1 ? "s" : ""} sans compte retiré${x.removed > 1 ? "s" : ""}` : ""}. Sauvegarde téléchargée sur cet appareil.`);
+      setOpen(false); setTyped("");
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="card wide danger-card">
+      <h2>Repartir de zéro</h2>
+      <div className="hint" style={{ marginBottom: 8 }}>Pour une nouvelle saison : efface les matchs, résultats, présences, compos, rosters du week-end, feuilles de match, récaps et MVP. Les comptes, les équipes, les coachs et leurs droits, les adversaires et leurs logos sont gardés.</div>
+      {!open ? <button className="btn-ghost small danger" onClick={() => { setOpen(true); setMsg(""); }}>Repartir de zéro…</button> : (
+        <div className="reset-box">
+          <label className="field"><span>Nouvelle saison</span><input value={season} onChange={(e) => setSeason(e.target.value)} placeholder="2027" /></label>
+          <label className="mail-opt"><input type="checkbox" checked={standings} onChange={(e) => setStandings(e.target.checked)} /><span><b>Effacer aussi le classement</b></span></label>
+          <div className="side-label" style={{ margin: "10px 0 4px" }}>Les joueurs</div>
+          <label className="mail-opt"><input type="radio" name="rz-pl" checked={players === "keep"} onChange={() => setPlayers("keep")} /><span><b>Garder tous les joueurs et leurs équipes</b><br /><small>Recommandé si tu réimportes l'effectif ensuite : les joueurs existants sont mis à jour.</small></span></label>
+          <label className="mail-opt"><input type="radio" name="rz-pl" checked={players === "teams"} onChange={() => setPlayers("teams")} /><span><b>Garder les joueurs, vider leurs équipes</b><br /><small>Habituel / renfort à refaire (écran Joueurs ou import).</small></span></label>
+          <label className="mail-opt"><input type="radio" name="rz-pl" checked={players === "unclaimed"} onChange={() => setPlayers("unclaimed")} /><span><b>Retirer les {unclaimed} joueurs qui n'ont pas de compte</b><br /><small>Les joueurs inscrits gardent leur compte.</small></span></label>
+          <label className="field" style={{ marginTop: 10 }}><span>Pour confirmer, tape <b>REMETTRE A ZERO</b></span><input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" /></label>
+          <div className="hint">Une sauvegarde complète est d'abord téléchargée sur cet appareil, et une copie reste dans Sauvegardes (« avant-remise-a-zero ») pour revenir en arrière.</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+            <button className="btn-primary small danger-btn" disabled={busy || typed.trim().toUpperCase() !== "REMETTRE A ZERO" || !/^\d{4}([-/]\d{2,4})?$/.test(season.trim())} onClick={run}>{busy ? "En cours…" : `Tout effacer et passer en ${season}`}</button>
+            <button className="btn-ghost small" onClick={() => { setOpen(false); setTyped(""); }}>Annuler</button>
+          </div>
+        </div>
+      )}
+      {msg && <div className="ok-msg" style={{ marginTop: 10 }}>{msg}</div>}
+      {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+    </div>
+  );
+}
+
 function AdminView({ state, token, busy, isTest, onSaveSquad, onDeleteSquad, onSetAccess, onCreateAccount, onRestored }) {
   const squads = state.squads || [];
   const [editing, setEditing] = useState(null);
@@ -4716,6 +4907,7 @@ function AdminView({ state, token, busy, isTest, onSaveSquad, onDeleteSquad, onS
         ))}
         <div className="side-label" style={{ margin: "14px 0 6px" }}>Nouvelle équipe</div>
         <SquadEditor squad={null} busy={busy} onSave={onSaveSquad} />
+        {squads.length > 1 && <SquadTransfer state={state} token={token} onState={onRestored} />}
       </div>
 
       <div className="card wide">
@@ -4766,6 +4958,7 @@ function AdminView({ state, token, busy, isTest, onSaveSquad, onDeleteSquad, onS
       {!isTest && <MailPanel token={token} />}
       {!isTest && <TestSpacePanel token={token} />}
       <BackupPanel token={token} onRestored={onRestored} />
+      {!isTest && <ResetClubPanel state={state} token={token} onState={onRestored} />}
     </div>
   );
 }
@@ -5796,6 +5989,22 @@ html, body { overflow-x: hidden; min-height: 100%; background: #0e1511; }
 .pl-teams i { font-style: normal; font-size: 10.5px; font-weight: 800; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; display: inline-grid; place-items: center; background: var(--sq); color: #0b120e; }
 .pl-teams i.renf { background: transparent; color: var(--sq); box-shadow: inset 0 0 0 1.5px var(--sq); }
 .pl-mail { color: var(--muted); }
+.sqt-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px; }
+.sqt-row label { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); flex: 1 1 140px; min-width: 0; }
+.sqt-row > span { padding-bottom: 10px; color: var(--muted); }
+.mtab-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.danger-card { border-color: rgba(242,102,90,.45); }
+.danger-card h2 { color: #F2665A; }
+.btn-ghost.danger { border-color: rgba(242,102,90,.6); color: #F2665A; }
+.danger-btn { background: #C8463C !important; border-color: #C8463C !important; color: #fff !important; }
+.reset-box .field input { max-width: 260px; }
+.dup-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; padding: 10px; border: 1px solid rgba(233,196,106,.4); border-radius: 12px; margin-bottom: 8px; }
+.dup-side { display: grid; gap: 4px; align-content: start; padding: 8px; border-radius: 9px; background: rgba(255,255,255,.03); min-width: 0; }
+.dup-side .btn-primary { justify-self: start; margin-top: 4px; }
+.dup-meta { font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.dup-acc { color: #3FAE74; font-weight: 700; }
+.dup-no { grid-column: 1 / -1; justify-self: start; }
+@media (max-width: 520px) { .dup-pair { grid-template-columns: 1fr; } }
 .mvp-share { display: flex; gap: 8px; flex-wrap: wrap; }
 .mvp-wa { text-decoration: none; display: inline-flex; align-items: center; background: #25D366 !important; color: #06130C !important; border-color: transparent !important; }
 .mvp-link-head { display: flex; justify-content: space-between; align-items: center; }

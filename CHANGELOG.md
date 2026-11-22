@@ -3,6 +3,15 @@
 Règle : correction ou petit ajout → version mineure (1.0 → 1.1) ; grosse nouveauté → version majeure (→ 2.0).
 La version est affichée en bas de l'appli et de la feuille de match (fichiers `public/version.js` et `APP_VERSION` dans `src/App.jsx`).
 
+## 3.11 — 22 novembre 2026 (repartir de zéro, doublons, Suivi plus clair)
+- **Administration › Repartir de zéro** (propriétaire) : nouvelle saison au choix (ex. 2027), efface matchs, résultats, présences, compos, rosters du week-end, feuilles de match, récaps et MVP ; option pour le classement ; pour les joueurs : tout garder, garder sans équipes, ou retirer ceux qui n'ont pas de compte. Comptes, équipes, coachs, droits, adversaires et logos gardés. Confirmation en tapant REMETTRE A ZERO ; une sauvegarde complète est d'abord téléchargée sur l'appareil, et une copie reste dans Sauvegardes.
+- **Joueurs › Doublons possibles** : l'appli repère les fiches qui se ressemblent (accent, faute de frappe, nom et prénom inversés). « Garder celle-ci » fusionne : présences, équipes, compos, appels, rosters du week-end, feuilles de match, récaps, votes MVP et compte passent sur la fiche gardée. « Ce n'est pas la même personne » masque la paire. (Supprimer un compte dans Suivi ne supprime pas la fiche du joueur, d'où les doublons restants.)
+- **Suivi** : la pastille à côté de « Vue d'ensemble par match » est l'équipe du match sélectionné ; une ligne rappelle quelle équipe est affichée, en « Tout le club » chaque onglet de match a la pastille de couleur de son équipe, et un message s'affiche quand l'équipe choisie n'a pas de match.
+- Correctif : une liste de matchs vide (remise à zéro) restait vide au lieu de revenir au calendrier par défaut ; la liste des saisons n'ajoute plus d'office l'année en cours.
+
+## 3.10 — 22 novembre 2026 (transférer les données d'une équipe à une autre)
+- Administration › Les équipes › **Transférer d'une équipe à une autre** : choisir l'équipe de départ, l'équipe d'arrivée et la saison (ou toutes), puis ce qu'on déplace : **les matchs** (avec présences, compos, résultats, appels en renfort, rosters du week-end, feuilles de match et récaps), **le classement**, et en option **les joueurs** (habituel / renfort). Confirmation avant, compte rendu après, trace dans le journal. Cas typique : l'historique rangé par défaut dans l'Équipe 1 alors qu'il appartient à l'Équipe 2.
+
 ## 3.9 — 21 novembre 2026 (coachs visibles dans l'écran Joueurs)
 - Écran Joueurs : chaque encadré d'équipe affiche ses coachs et son staff (« Coach · Loïc DIDAT », « Staff · Thibaut VANDENBERGHE »), d'après Administration › Droits des comptes. Sans coach : « Pas de coach · à définir dans Administration › Droits des comptes ».
 - Dans la liste, un badge « Coach 2 » / « Staff 1 » à côté du nom des joueurs qui coachent une équipe.
